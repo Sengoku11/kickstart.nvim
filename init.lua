@@ -1056,5 +1056,18 @@ require('lazy').setup({
   },
 })
 
+-- Treat *.daml as Haskell for Tree-sitter
+-- At least it prevents wrong indentation.
+-- Currently couldn't find better solution
+vim.treesitter.language.register('haskell', 'daml')
+
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'daml',
+  callback = function()
+    vim.bo.indentexpr = 'GetHaskellIndent()'
+    vim.b.did_indent = 1 -- keep other scripts from resetting it
+  end,
+})
+
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et

@@ -647,11 +647,39 @@ require('lazy').setup({
         },
       }
 
+      --
+      -- ─── Add Daml LSP ────────────────────────────────────────────────
+      do
+        local util = require 'lspconfig.util'
+        local configs = require 'lspconfig.configs'
+
+        if not configs.daml then
+          configs.daml = {
+            default_config = {
+              cmd = { 'daml', 'damlc', 'ide', '--scenarios=no', '--RTS', '+RTS', '-M4G', '-N' }, -- DA docs :contentReference[oaicite:0]{index=0}
+              filetypes = { 'daml' },
+              root_dir = util.root_pattern('daml.yaml', '.git'),
+              single_file_support = true,
+            },
+          }
+        end
+      end
+
+      -- Detect .daml files
+      vim.api.nvim_create_autocmd({ 'BufRead', 'BufNewFile' }, {
+        pattern = { '*.daml' },
+        command = 'setfiletype daml',
+      })
+
       -- LSP servers and clients are able to communicate to each other what features they support.
       --  By default, Neovim doesn't support everything that is in the LSP specification.
       --  When you add blink.cmp, luasnip, etc. Neovim now has *more* capabilities.
       --  So, we create new capabilities with blink.cmp, and then broadcast that to the servers.
       local capabilities = require('blink.cmp').get_lsp_capabilities()
+
+      require('lspconfig').daml.setup {
+        capabilities = capabilities,
+      }
 
       -- Enable the following language servers
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
@@ -664,6 +692,7 @@ require('lazy').setup({
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
         gopls = {},
+        daml = {},
 
         -- clangd = {},
         -- pyright = {},
@@ -706,7 +735,12 @@ require('lazy').setup({
       --
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
-      local ensure_installed = vim.tbl_keys(servers or {})
+      local ensure_installed = {} -- start empty so daml never gets in
+      for name in pairs(servers or {}) do
+        if name ~= 'daml' then -- keep everything *except* daml
+          table.insert(ensure_installed, name)
+        end
+      end
       vim.list_extend(ensure_installed, {
         'stylua', -- Used to format Lua code
         'gopls',

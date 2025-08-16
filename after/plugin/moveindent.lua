@@ -95,8 +95,3 @@ map('i', '<A-Up>', wrap_ins(move_up), opts)
 map('i', '<A-Down>', wrap_ins(move_down), opts)
 map('i', '<A-k>', wrap_ins(move_up), opts)
 map('i', '<A-j>', wrap_ins(move_down), opts)
-
--- ---- paste without clobbering yank ----
-map('x', 'p', 'pgvy', { noremap = true, silent = true, desc = 'Visual paste keep yank' })
-map({ 'n', 'x' }, '<leader>p', '"0p', { noremap = true, silent = true, desc = 'Paste last yanked' })
-map({ 'n', 'x' }, '<leader>P', '"0P', { noremap = true, silent = true, desc = 'Paste last yanked (before)' })

@@ -5,13 +5,13 @@ return {
     event = { 'BufReadPre', 'BufNewFile' },
     config = function()
       local lint = require 'lint'
-      lint.linters_by_ft = {
-        -- markdown = { 'markdownlint' }, -- requires installation of markdown-lint on your machine
-      }
+      -- lint.linters_by_ft = {
+      -- markdown = { 'markdownlint' }, -- requires installation of markdown-lint on your machine
+      -- }
 
       -- To allow other plugins to add linters to require('lint').linters_by_ft,
       -- instead set linters_by_ft like this:
-      -- lint.linters_by_ft = lint.linters_by_ft or {}
+      lint.linters_by_ft = lint.linters_by_ft or {}
       -- lint.linters_by_ft['markdown'] = { 'markdownlint' }
       --
       -- However, note that this will enable a set of default linters,

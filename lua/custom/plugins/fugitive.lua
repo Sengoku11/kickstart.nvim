@@ -5,11 +5,11 @@ return {
       'tpope/vim-rhubarb', -- GitHub GBrowse
       'shumphrey/fugitive-gitlab.vim', -- GitLab GBrowse
     },
-    cmd = { 'G', 'Git', 'GBrowse' }, -- Lazy-load only when these are used
     config = function()
       -- Optional keymaps
-      vim.keymap.set('n', '<leader>gs', ':Git<CR>', { desc = 'Fugitive status' })
-      vim.keymap.set('n', '<leader>gb', ':GBrowse<CR>', { desc = 'Open in browser' })
+      vim.keymap.set('n', '<leader>gs', ':Git<CR>', { desc = 'Fugitive [g]it [s]tatus' })
+      vim.keymap.set('n', '<leader>gb', ':GBrowse<CR>', { desc = 'Open [g]it page in [b]rowser' })
+      vim.keymap.set('n', '<leader>gd', ':Gvdiffsplit<CR>', { desc = '[G]it [d]iff' })
     end,
   },
 }

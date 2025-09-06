@@ -506,9 +506,7 @@ require('lazy').setup({
         },
       }
 
-      --
-      -- ─── Add Daml LSP ────────────────────────────────────────────────
-      do
+      do -- Add Daml LSP config
         local util = require 'lspconfig.util'
         local configs = require 'lspconfig.configs'
 
@@ -524,24 +522,15 @@ require('lazy').setup({
         end
       end
 
-      -- Detect .daml files
-      vim.api.nvim_create_autocmd({ 'BufRead', 'BufNewFile' }, {
-        pattern = { '*.daml' },
-        command = 'setfiletype daml',
-      })
-
       -- LSP servers and clients are able to communicate to each other what features they support.
       --  By default, Neovim doesn't support everything that is in the LSP specification.
       --  When you add blink.cmp, luasnip, etc. Neovim now has *more* capabilities.
       --  So, we create new capabilities with blink.cmp, and then broadcast that to the servers.
       local capabilities = require('blink.cmp').get_lsp_capabilities()
 
-      require('lspconfig').daml.setup {
-        capabilities = capabilities,
-      }
-
       -- Enable the following language servers
-      --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
+      --  Feel free to add/remove any LSPs that you want here.
+      --  They will automatically be installed via Mason.
       --
       --  Add any additional override configuration in the following tables. Available keys are:
       --  - cmd (table): Override the default command used to start the server
@@ -551,7 +540,6 @@ require('lazy').setup({
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
         gopls = {},
-        daml = {},
 
         -- clangd = {},
         -- pyright = {},
@@ -589,13 +577,11 @@ require('lazy').setup({
         -- Your custom nvim-java configuration goes here
       }
 
-      -- The following loop will configure each server with the capabilities we defined above.
-      -- This will ensure that all servers have the same base configuration, but also
-      -- allow for server-specific overrides.
-      for server_name, server_config in pairs(servers) do
-        server_config.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server_config.capabilities or {})
-        require('lspconfig')[server_name].setup(server_config)
-      end
+      -- Setup explicitly because Mason cannot install Daml LSP.
+      -- Disable if you don't need Daml. Requires a pre-installed Daml and added to the PATH.
+      require('lspconfig').daml.setup {
+        capabilities = capabilities
+      }
 
       -- [[ Mason configuration ]]
       -- Ensure the servers and tools above are installed
@@ -609,17 +595,11 @@ require('lazy').setup({
       --
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
-      local ensure_installed = {} -- start empty so daml never gets in
-      for name in pairs(servers or {}) do
-        if name ~= 'daml' then -- keep everything *except* daml
-          table.insert(ensure_installed, name)
-        end
-      end
+      local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
         'stylua', -- Used to format Lua code
-        'gopls',
       })
-      require('mason-tool-installer').setup { ensure_installed = ensure_installed }
+      require('mason-tool-installer').setup { ensure_installed = servers }
 
       require('mason-lspconfig').setup {
         ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
@@ -909,19 +889,6 @@ require('lazy').setup({
       lazy = '💤 ',
     },
   },
-})
-
--- Treat *.daml as Haskell for Tree-sitter
--- At least it prevents wrong indentation.
--- Currently couldn't find better solution
-vim.treesitter.language.register('haskell', 'daml')
-
-vim.api.nvim_create_autocmd('FileType', {
-  pattern = 'daml',
-  callback = function()
-    vim.bo.indentexpr = 'GetHaskellIndent()'
-    vim.b.did_indent = 1 -- keep other scripts from resetting it
-  end,
 })
 
 -- The line beneath this is called `modeline`. See `:help modeline`

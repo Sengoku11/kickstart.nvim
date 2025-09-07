@@ -32,6 +32,6 @@ vim.api.nvim_create_autocmd('FileType', {
   end,
 })
 
-return {
-  { 'obsidiansystems/daml.vim', ft = 'daml' }, -- syntax only
+return { -- Adds syntax highlighting.
+  { 'obsidiansystems/daml.vim', ft = 'daml' },
 }

@@ -839,6 +839,7 @@ require('lazy').setup({
   --    This is the easiest way to modularize your config.
   --
   { import = 'custom.plugins' },
+  { import = 'plugins.lang' },
   --
   -- For additional information with loading, sourcing and examples see `:help lazy.nvim-🔌-plugin-spec`
   -- Or use telescope!

@@ -529,8 +529,6 @@ require('lazy').setup({
       local capabilities = require('blink.cmp').get_lsp_capabilities()
 
       -- Enable the following language servers
-      --  Feel free to add/remove any LSPs that you want here.
-      --  They will automatically be installed via Mason.
       --
       --  Add any additional override configuration in the following tables. Available keys are:
       --  - cmd (table): Override the default command used to start the server
@@ -538,12 +536,10 @@ require('lazy').setup({
       --  - capabilities (table): Override fields in capabilities. Can be used to disable certain LSP features.
       --  - settings (table): Override the default settings passed when initializing the server.
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
-      local servers = {
+      local servers = { -- They will automatically be installed via Mason.
         gopls = {},
 
-        -- clangd = {},
-        -- pyright = {},
-        -- rust_analyzer = {},
+        -- clangd = {}, pyright = {}, rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
         --
         -- Some languages (like typescript) have entire language plugins that can be useful:
@@ -551,7 +547,6 @@ require('lazy').setup({
         --
         -- But for many setups, the LSP (`ts_ls`) will work just fine
         -- ts_ls = {},
-        --
 
         lua_ls = {
           -- cmd = { ... },
@@ -569,6 +564,9 @@ require('lazy').setup({
         },
       }
 
+      -- [[ Manual LSP setup ]] 
+      -- Use this if Mason is unavailable (e.g. behind a firewall).
+      -- Requires that language servers are already installed and available in your PATH.
       require('java').setup {
         -- Your custom jdtls settings goes here
       }
@@ -577,14 +575,12 @@ require('lazy').setup({
         -- Your custom nvim-java configuration goes here
       }
 
-      -- Setup explicitly because Mason cannot install Daml LSP.
-      -- Disable if you don't need Daml. Requires a pre-installed Daml and added to the PATH.
       require('lspconfig').daml.setup {
         capabilities = capabilities
       }
 
-      -- [[ Mason configuration ]]
-      -- Ensure the servers and tools above are installed
+      -- [[ Mason LSP setup ]]
+      -- Ensures the servers above and *tools* below are automatically installed.
       --
       -- To check the current status of installed tools and/or manually install
       -- other tools, you can run
@@ -851,7 +847,6 @@ require('lazy').setup({
     --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
     --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
   },
-
 
   require 'kickstart.plugins.debug',
   require 'kickstart.plugins.indent_line',

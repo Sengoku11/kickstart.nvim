@@ -506,22 +506,6 @@ require('lazy').setup({
         },
       }
 
-      do -- Add Daml LSP config
-        local util = require 'lspconfig.util'
-        local configs = require 'lspconfig.configs'
-
-        if not configs.daml then
-          configs.daml = {
-            default_config = {
-              cmd = { 'daml', 'damlc', 'ide', '--scenarios=no', '--RTS', '+RTS', '-M4G', '-N' }, -- DA docs :contentReference[oaicite:0]{index=0}
-              filetypes = { 'daml' },
-              root_dir = util.root_pattern('daml.yaml', '.git'),
-              single_file_support = true,
-            },
-          }
-        end
-      end
-
       -- LSP servers and clients are able to communicate to each other what features they support.
       --  By default, Neovim doesn't support everything that is in the LSP specification.
       --  When you add blink.cmp, luasnip, etc. Neovim now has *more* capabilities.
@@ -573,10 +557,6 @@ require('lazy').setup({
 
       require('lspconfig').jdtls.setup {
         -- Your custom nvim-java configuration goes here
-      }
-
-      require('lspconfig').daml.setup {
-        capabilities = capabilities
       }
 
       -- [[ Mason LSP setup ]]

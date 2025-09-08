@@ -17,9 +17,9 @@ return {
         'query',
         'vim',
         'vimdoc',
-        'go',
-        'gomod',
-        'gosum',
+        -- 'go',
+        -- 'gomod',
+        -- 'gosum',
       },
       -- Autoinstall languages that are not installed
       auto_install = true,

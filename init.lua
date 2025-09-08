@@ -259,7 +259,6 @@ require('lazy').setup({
       { 'mason-org/mason.nvim', opts = {} },
       'mason-org/mason-lspconfig.nvim',
       'WhoIsSethDaniel/mason-tool-installer.nvim',
-      'nvim-java/nvim-java',
 
       -- Useful status updates for LSP.
       { 'j-hui/fidget.nvim', opts = {} },
@@ -444,17 +443,6 @@ require('lazy').setup({
             },
           },
         },
-      }
-
-      -- [[ Manual LSP setup ]] 
-      -- Use this if Mason is unavailable (e.g. behind a firewall).
-      -- Requires that language servers are already installed and available in your PATH.
-      require('java').setup {
-        -- Your custom jdtls settings goes here
-      }
-
-      require('lspconfig').jdtls.setup {
-        -- Your custom nvim-java configuration goes here
       }
 
       -- [[ Mason LSP setup ]]

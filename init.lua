@@ -141,8 +141,8 @@ rtp:prepend(lazypath)
 require('lazy').setup({
   { import = 'plugins.ui' },
   { import = 'plugins.editor' },
-
-  'NMAC427/guess-indent.nvim', -- Detect tabstop and shiftwidth automatically
+  { import = 'plugins.coding' },
+  { import = 'plugins.lang' },
 
   -- NOTE: Plugins can also be added by using a table,
   -- with the first argument being the link and the following
@@ -210,16 +210,6 @@ require('lazy').setup({
     end,
   },
 
-  require 'kickstart.plugins.debug',
-  require 'kickstart.plugins.indent_line',
-  require 'kickstart.plugins.lint',
-  require 'kickstart.plugins.autopairs',
-  require 'kickstart.plugins.neo-tree',
-
-  { import = 'plugins.coding' },
-  { import = 'plugins.lang' },
-  { import = 'custom.plugins' },
-  --
   -- For additional information with loading, sourcing and examples see `:help lazy.nvim-🔌-plugin-spec`
   -- Or use telescope!
   -- In normal mode type `<space>sh` then write `lazy.nvim-plugin`

@@ -19,6 +19,7 @@
 ==============================================================================
 --]]
 
+-- stylua: ignore start
 --  NOTE: Must happen before plugins are loaded (otherwise wrong leader will be used)
 vim.g.mapleader       = ' '
 vim.g.maplocalleader  = ' '
@@ -54,6 +55,7 @@ vim.o.inccommand  = 'split' -- Preview substitutions live, as you type!
 -- Make whitespace visible
 vim.o.list        = true
 vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' } -- replace certain whitespace characters
+-- stylua: ignore end
 
 -- Sync clipboard between OS and Neovim.
 --  Schedule the setting after `UiEnter` because it can increase startup-time.
@@ -90,6 +92,7 @@ end)
 --  See `:help hlsearch`
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
+-- stylua: ignore start
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>',            { desc = 'Exit terminal mode' })
 
@@ -104,6 +107,8 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 -- vim.keymap.set("n", "<C-S-l>", "<C-w>L", { desc = "Move window to the right" })
 -- vim.keymap.set("n", "<C-S-j>", "<C-w>J", { desc = "Move window to the lower" })
 -- vim.keymap.set("n", "<C-S-k>", "<C-w>K", { desc = "Move window to the upper" })
+--
+-- stylua: ignore end
 
 -- [[ Basic Autocommands ]]
 --  See `:help lua-guide-autocommands`

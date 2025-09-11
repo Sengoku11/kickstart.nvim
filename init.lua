@@ -93,8 +93,8 @@ end)
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
 -- stylua: ignore start
-vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
-vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>',            { desc = 'Exit terminal mode' })
+vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open Quickfix List' })
+vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>',            { desc = 'Exit Terminal Mode' })
 
 -- See `:help wincmd` for a list of all window commands
 vim.keymap.set('n', '<C-h>', '<C-w><C-h>', { desc = 'Move focus to the left window' })
@@ -186,16 +186,16 @@ require('lazy').setup({
       -- Better Around/Inside textobjects
       --
       -- Examples:
-      --  - va)  - [V]isually select [A]round [)]paren
-      --  - yinq - [Y]ank [I]nside [N]ext [Q]uote
-      --  - ci'  - [C]hange [I]nside [']quote
+      --  - va)  - Visually select Around )paren
+      --  - yinq - Yank Inside Next Quote
+      --  - ci'  - Change Inside 'quote
       require('mini.ai').setup { n_lines = 500 }
 
       -- Add/delete/replace surroundings (brackets, quotes, etc.)
       --
-      -- - saiw) - [S]urround [A]dd [I]nner [W]ord [)]Paren
-      -- - sd'   - [S]urround [D]elete [']quotes
-      -- - sr)'  - [S]urround [R]eplace [)] [']
+      -- - saiw) - Surround Add Inner Word )Paren
+      -- - sd'   - Surround Delete 'quotes
+      -- - sr)'  - Surround Replace ) '
       require('mini.surround').setup()
 
       -- Simple and easy statusline.

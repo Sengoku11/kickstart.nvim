@@ -12,8 +12,8 @@ return {
   lazy = false,
   keys = {
     { '\\', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
-    { '<leader>os', ':Neotree git_status<CR>', desc = 'NeoTree [o]pen git [s]tatus', silent = true },
-    { '<leader>ob', ':Neotree buffers<CR>', desc = 'NeoTree [o]pen [b]uffers', silent = true },
+    { '<leader>os', ':Neotree git_status<CR>', desc = 'NeoTree Open Git Status', silent = true },
+    { '<leader>ob', ':Neotree buffers<CR>', desc = 'NeoTree Open Buffers', silent = true },
   },
   opts = {
     filesystem = {

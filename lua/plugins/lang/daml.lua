@@ -12,34 +12,25 @@ vim.api.nvim_create_autocmd('FileType', {
   end,
 })
 
+-- Create a new config for DAML LSP.
+local configs = require 'lspconfig.configs'
+if not configs.daml then
+  configs.daml = {
+    default_config = {
+      cmd = { 'daml', 'damlc', 'ide', '--scenarios=yes', '--RTS', '+RTS', '-M4G', '-N' }, -- DA docs :contentReference[oaicite:0]{index=0}
+      filetypes = { 'daml' },
+      root_dir = require('lspconfig.util').root_pattern('daml.yaml', '.git'),
+      single_file_support = true,
+    },
+  }
+end
+
+-- Setup DAML LSP.
+require('lspconfig').daml.setup {
+  capabilities = require('blink.cmp').get_lsp_capabilities(),
+}
+
 return { -- Adds syntax highlighting.
   { 'obsidiansystems/daml.vim', ft = 'daml' },
   { 'nvim-treesitter/nvim-treesitter', opts = { ensure_installed = { 'haskell' } } },
-  {
-    'neovim/nvim-lspconfig',
-    dependencies = {
-      'saghen/blink.cmp',
-    },
-    opts = function()
-      local util = require 'lspconfig.util'
-      local configs = require 'lspconfig.configs'
-
-      -- Create a new config for DAML LSP.
-      if not configs.daml then
-        configs.daml = {
-          default_config = {
-            cmd = { 'daml', 'damlc', 'ide', '--scenarios=yes', '--RTS', '+RTS', '-M4G', '-N' }, -- DA docs :contentReference[oaicite:0]{index=0}
-            filetypes = { 'daml' },
-            root_dir = util.root_pattern('daml.yaml', '.git'),
-            single_file_support = true,
-          },
-        }
-      end
-
-      -- Setup DAML LSP.
-      require('lspconfig').daml.setup {
-        capabilities = require('blink.cmp').get_lsp_capabilities(),
-      }
-    end,
-  },
 }

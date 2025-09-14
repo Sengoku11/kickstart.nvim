@@ -1,6 +1,7 @@
 return {
   {
     'folke/drop.nvim',
+    enabled = false,
     opts = {
       theme = 'auto', -- when auto, it will choose a theme based on the date
       screensaver = 1000 * 60 * 5, -- show after 5 minutes. Set to false, to disable

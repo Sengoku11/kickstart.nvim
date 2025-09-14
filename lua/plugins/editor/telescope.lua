@@ -62,7 +62,10 @@ return {
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = 'Search Diagnostics' })
       vim.keymap.set('n', '<leader>s.', builtin.resume, { desc = 'Search Repeat' })
       vim.keymap.set('n', '<leader>sr', builtin.oldfiles, { desc = 'Search Recent Files' })
-      vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = 'Find existing buffers' })
+      vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = 'Find Buffers' })
+
+      -- stylua: ignore
+      vim.keymap.set('n', '<leader>sc', function() builtin.find_files { cwd = vim.fn.stdpath 'config' } end, { desc = 'Search Neovim Config' })
 
       -- Slightly advanced example of overriding default behavior and theme
       vim.keymap.set('n', '<leader>/', function()
@@ -81,11 +84,6 @@ return {
           prompt_title = 'Live Grep in Open Files',
         }
       end, { desc = 'Search / in Open Files' })
-
-      -- Shortcut for searching your Neovim configuration files
-      vim.keymap.set('n', '<leader>sn', function()
-        builtin.find_files { cwd = vim.fn.stdpath 'config' }
-      end, { desc = 'Search Neovim files' })
     end,
   },
 }

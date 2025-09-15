@@ -85,6 +85,9 @@ vim.schedule(function()
   -- }
 end)
 
+_G.BA = {}
+BA.config = require 'ba.config'
+
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
 

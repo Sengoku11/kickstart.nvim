@@ -29,19 +29,21 @@ return {
           theme = 'auto',
           globalstatus = vim.o.laststatus == 3,
           disabled_filetypes = { statusline = { 'dashboard', 'alpha', 'ministarter', 'snacks_dashboard' } },
+          component_separators = BA.config.icons.lualine.component_separators,
+          section_separators = BA.config.icons.lualine.section_separators,
         },
         sections = {
           lualine_a = { 'mode' },
-          lualine_b = { 'branch' },
+          lualine_b = { { 'branch', icon = BA.config.icons.git.branch } },
           lualine_c = {
             { 'diagnostics' },
             { 'filename' },
             {
               'diff',
               symbols = {
-                added = '+',
-                modified = '~',
-                removed = '-',
+                added = BA.config.icons.git.added,
+                modified = BA.config.icons.git.modified,
+                removed = BA.config.icons.git.removed,
               },
               source = function()
                 local gitsigns = vim.b.gitsigns_status_dict
@@ -64,7 +66,7 @@ return {
           },
           lualine_z = {
             function()
-              return ' ' .. os.date '%R'
+              return BA.config.icons.kinds.Clock .. os.date '%R'
             end,
           },
         },

@@ -21,7 +21,8 @@ return {
     added    = I(' ', '++'),
     modified = I(' ', '~~'),
     removed  = I(' ', '--'),
-    github = I('', 'GH'),
+    github   = I('', 'GH'),
+    branch   = I('', 'ᛉ '),
   },
   lualine = {
     component_separators = { left = I('', '|'), right = I('', '|')},

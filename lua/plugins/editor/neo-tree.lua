@@ -7,7 +7,7 @@ return {
   version = '*',
   dependencies = {
     'nvim-lua/plenary.nvim',
-    'nvim-tree/nvim-web-devicons', -- not strictly required, but recommended
+    { 'nvim-tree/nvim-web-devicons', enabled = vim.g.have_nerd_font },
     'MunifTanjim/nui.nvim',
   },
   lazy = false,
@@ -50,14 +50,14 @@ return {
     default_component_configs = {
       indent = {
         with_expanders = true, -- if nil and file nesting is enabled, will enable expanders
-        expander_collapsed = '',
-        expander_expanded = '',
+        expander_collapsed = BA.config.icons.kinds.Collapsed,
+        expander_expanded = BA.config.icons.kinds.Expanded,
         expander_highlight = 'NeoTreeExpander',
       },
       git_status = {
         symbols = {
-          unstaged = '󰄱',
-          staged = '󰱒',
+          unstaged = BA.config.icons.git.unstaged,
+          staged = BA.config.icons.git.staged,
         },
       },
     },

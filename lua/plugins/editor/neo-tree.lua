@@ -61,8 +61,16 @@ return {
       },
       git_status = {
         symbols = {
+          -- Change type
+          added = BA.config.icons.git.added,
+          deleted = BA.config.icons.git.deleted,
+          renamed = BA.config.icons.git.renamed,
+          -- Status type
+          untracked = BA.config.icons.git.untrackd,
+          ignored = BA.config.icons.git.ignored,
           unstaged = BA.config.icons.git.unstaged,
           staged = BA.config.icons.git.staged,
+          conflict = BA.config.icons.git.conflict,
         },
       },
     },

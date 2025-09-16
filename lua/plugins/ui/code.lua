@@ -10,7 +10,22 @@ return {
     'folke/todo-comments.nvim',
     event = 'VeryLazy',
     cmd = { 'TodoTrouble', 'TodoTelescope' },
-    opts = {},
+    opts = {
+      keywords = {
+        FIX = {
+          icon = BA.config.icons.todo.fix, -- icon used for the sign, and in search results
+          color = 'error', -- can be a hex color, or a named color (see below)
+          alt = { 'FIXME', 'BUG', 'FIXIT', 'ISSUE' }, -- a set of other keywords that all map to this FIX keywords
+          -- signs = false, -- configure signs for some keywords individually
+        },
+        TODO = { icon = BA.config.icons.todo.todo, color = 'info', alt = { 'TODO' } },
+        HACK = { icon = BA.config.icons.todo.hack, color = 'warning' },
+        WARN = { icon = BA.config.icons.todo.warn, color = 'warning', alt = { 'WARNING', 'XXX' } },
+        PERF = { icon = BA.config.icons.todo.perf, alt = { 'OPTIM', 'PERFORMANCE', 'OPTIMIZE' } },
+        NOTE = { icon = BA.config.icons.todo.note, color = 'hint', alt = { 'INFO' } },
+        TEST = { icon = BA.config.icons.todo.test, color = 'test', alt = { 'TESTING', 'PASSED', 'FAILED' } },
+      },
+    },
     -- stylua: ignore
     keys = {
       { "]t", function() require("todo-comments").jump_next() end, desc = "Next Todo Comment" },

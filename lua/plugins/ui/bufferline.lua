@@ -24,11 +24,16 @@ return {
         right_mouse_command = function(n) Snacks.bufdelete(n) end,
         diagnostics = 'nvim_lsp',
         always_show_bufferline = false,
-        -- diagnostics_indicator = function(_, _, diag)
-        --   local icons = LazyVim.config.icons.diagnostics
-        --   local ret = (diag.error and icons.Error .. diag.error .. ' ' or '') .. (diag.warning and icons.Warn .. diag.warning or '')
-        --   return vim.trim(ret)
-        -- end,
+        diagnostics_indicator = function(_, _, diag)
+          local icons = BA.config.icons.diagnostics
+          local ret = (diag.error and icons.Error .. diag.error .. ' ' or '') .. (diag.warning and icons.Warn .. diag.warning or '')
+          return vim.trim(ret)
+        end,
+        buffer_close_icon = BA.config.icons.bufferline.buffer_close_icon,
+        modified_icon = BA.config.icons.bufferline.modified_icon,
+        close_icon = BA.config.icons.bufferline.close_icon,
+        left_trunc_marker = BA.config.icons.bufferline.left_trunc_marker,
+        right_trunc_marker = BA.config.icons.bufferline.right_trunc_marker,
         offsets = {
           {
             filetype = 'neo-tree',

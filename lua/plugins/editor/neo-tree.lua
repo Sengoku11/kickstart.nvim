@@ -54,6 +54,11 @@ return {
         expander_expanded = BA.config.icons.kinds.Expanded,
         expander_highlight = 'NeoTreeExpander',
       },
+      icon = {
+        folder_closed = BA.config.icons.kinds.Folder,
+        folder_open = BA.config.icons.kinds.FolderOpen,
+        folder_empty = BA.config.icons.kinds.FolderEmpty,
+      },
       git_status = {
         symbols = {
           unstaged = BA.config.icons.git.unstaged,

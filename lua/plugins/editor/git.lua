@@ -5,6 +5,7 @@
 return {
   {
     'tpope/vim-fugitive',
+    event = 'VeryLazy',
     dependencies = {
       'tpope/vim-rhubarb', -- GitHub GBrowse
       'shumphrey/fugitive-gitlab.vim', -- GitLab GBrowse
@@ -18,6 +19,7 @@ return {
   },
   {
     'lewis6991/gitsigns.nvim',
+    event = 'VeryLazy',
     opts = {
       signs = {
         add = { text = '+' },

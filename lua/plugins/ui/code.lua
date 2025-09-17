@@ -2,6 +2,7 @@ return {
   { -- Add indentation guides (vertical lines for blocks) even on blank lines.
     -- See `:help ibl`
     'lukas-reineke/indent-blankline.nvim',
+    event = 'VeryLazy',
     main = 'ibl',
     opts = {},
   },

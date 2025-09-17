@@ -14,6 +14,7 @@ return {
   {
     -- Main LSP Configuration
     'neovim/nvim-lspconfig',
+    event = 'VeryLazy',
     dependencies = {
       'nvim-telescope/telescope.nvim',
       -- Automatically install LSPs and related tools to stdpath for Neovim

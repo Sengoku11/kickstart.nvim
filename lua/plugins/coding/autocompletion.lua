@@ -11,7 +11,7 @@ return {
   },
   { -- Enhance autocompletion context menu.
     'saghen/blink.cmp',
-    event = 'VimEnter',
+    event = 'VeryLazy',
     version = '1.*',
     dependencies = {
       { -- Snippet Engine

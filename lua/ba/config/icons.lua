@@ -22,7 +22,7 @@ return {
   },
   bufferline = {
     buffer_close_icon  = I('󰅖', 'x'),
-    modified_icon      = I('● ', '⏺'),
+    modified_icon      = I('● ', '●'),
     close_icon         = I(' ', 'ㄨ'),
     left_trunc_marker  = I(' ', '←'),
     right_trunc_marker = I(' ', '→'),

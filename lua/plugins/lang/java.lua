@@ -1,8 +1,9 @@
 return {
-  { 'nvim-treesitter/nvim-treesitter', opts = { ensure_installed = { 'java' } } },
-  { 'nvim-java/nvim-java' },
+  { 'nvim-treesitter/nvim-treesitter', ft = { 'java' }, opts = { ensure_installed = { 'java' } } },
+  { 'nvim-java/nvim-java', ft = 'java' },
   {
     'neovim/nvim-lspconfig',
+    ft = 'java',
     dependencies = {
       'saghen/blink.cmp',
     },

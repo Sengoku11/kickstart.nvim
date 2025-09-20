@@ -29,6 +29,10 @@ vim.g.have_nerd_font = false
 -- Set to true to do extra configuration if you run Neovim over SSH.
 vim.g.is_remote = false
 
+-- if the completion engine supports the AI source,
+-- use that instead of inline suggestions
+vim.g.ai_cmp = true
+
 -- [[ Setting Options ]]
 -- For more options see
 --  `:help vim.o`

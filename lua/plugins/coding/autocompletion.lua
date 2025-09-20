@@ -11,7 +11,7 @@ return {
   },
   { -- Enhance autocompletion context menu.
     'saghen/blink.cmp',
-    event = 'VeryLazy',
+    event = 'InsertEnter',
     version = '1.*',
     dependencies = {
       { -- Snippet Engine
@@ -26,15 +26,13 @@ return {
           end
           return 'make install_jsregexp'
         end)(),
-        dependencies = {
-          { -- `friendly-snippets` contains a variety of premade snippets.
-            'rafamadriz/friendly-snippets',
-            config = function()
-              require('luasnip.loaders.from_vscode').lazy_load()
-            end,
-          },
-        },
         opts = {},
+      },
+      { -- `friendly-snippets` contains a variety of premade snippets.
+        'rafamadriz/friendly-snippets',
+        config = function()
+          require('luasnip.loaders.from_vscode').lazy_load()
+        end,
       },
       'folke/lazydev.nvim',
     },
@@ -53,8 +51,6 @@ return {
         -- For an understanding of why the 'default' preset is recommended,
         -- you will need to read `:help ins-completion`
         --
-        -- No, but seriously. Please read `:help ins-completion`, it is really good!
-        --
         -- All presets have the following mappings:
         -- <tab>/<s-tab>: move to right/left of your snippet expansion
         -- <c-space>: Open menu or open docs if already open
@@ -63,12 +59,13 @@ return {
         -- <c-k>: Toggle signature help
         --
         -- See :h blink-cmp-config-keymap for defining your own keymap
-        preset = 'default',
-
+        preset = 'enter',
+        ['<C-y>'] = { 'select_and_accept' },
         -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
         --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
       },
 
+      -- TODO: add a fallback for nerd-font icons.
       appearance = {
         -- 'mono' (default) for 'Nerd Font Mono' or 'normal' for 'Nerd Font'
         -- Adjusts spacing to ensure icons are aligned
@@ -76,9 +73,26 @@ return {
       },
 
       completion = {
+        accept = {
+          -- experimental auto-brackets support
+          auto_brackets = {
+            enabled = true,
+          },
+        },
+        menu = {
+          draw = {
+            treesitter = { 'lsp' },
+          },
+        },
         -- By default, you may press `<c-space>` to show the documentation.
         -- Optionally, set `auto_show = true` to show the documentation after a delay.
-        documentation = { auto_show = false, auto_show_delay_ms = 500 },
+        documentation = {
+          auto_show = true,
+          auto_show_delay_ms = 50,
+        },
+        ghost_text = {
+          enabled = vim.g.ai_cmp,
+        },
       },
 
       sources = {
@@ -101,6 +115,11 @@ return {
 
       -- Shows a signature help window while you type arguments for a function
       signature = { enabled = true },
+
+      -- Enables autocompletion in :commands, like :G switch origin/...
+      cmdline = {
+        enabled = true,
+      },
     },
   },
 }

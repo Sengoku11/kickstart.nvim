@@ -84,10 +84,19 @@ vim.o.splitbelow = true
 vim.o.list = true
 vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' } -- replace certain whitespace characters
 
+-- ---- indent behavior: keep file's style predictable ----
+vim.o.autoindent = true
+vim.o.smartindent = true
+vim.o.copyindent = true
+vim.o.preserveindent = true
+
 -- [[ Other Configs ]]
 _G.BA = {}
 BA.config = require 'ba.config'
 BA.util = require 'ba.util'
+
+-- Load autocommands.
+require 'ba.autocommands'
 
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`

@@ -1,4 +1,4 @@
--- This file is automatically loaded by ba.config.init.
+-- This file is automatically loaded by ba.autocommands.init.
 
 -- See `:h lua-guide-autocommands`
 

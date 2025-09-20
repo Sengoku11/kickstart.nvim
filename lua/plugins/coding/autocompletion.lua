@@ -88,7 +88,7 @@ return {
         -- Optionally, set `auto_show = true` to show the documentation after a delay.
         documentation = {
           auto_show = true,
-          auto_show_delay_ms = 50,
+          auto_show_delay_ms = 5,
         },
         ghost_text = {
           enabled = vim.g.ai_cmp,
@@ -96,7 +96,8 @@ return {
       },
 
       sources = {
-        default = { 'lsp', 'path', 'snippets', 'lazydev' },
+        -- Remove 'buffer' if you don't want text completions, by default it's only enabled when LSP returns no items
+        default = { 'lsp', 'path', 'snippets', 'buffer', 'lazydev' },
         providers = {
           lazydev = { module = 'lazydev.integrations.blink', score_offset = 100 },
         },

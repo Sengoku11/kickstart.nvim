@@ -57,6 +57,21 @@ vim.o.updatetime = 250 -- Decrease update time
 -- side of a window, normally containing the fold, sign and number columns.
 vim.o.statuscolumn = [[%!v:lua.require'snacks.statuscolumn'.get()]]
 
+-- Folds with a higher level will be closed by default.
+-- Setting this to zero will allways keep all fold closed by default.
+vim.o.foldlevel = 3
+
+-- Fold method.
+if vim.fn.has 'nvim-0.10' == 1 then
+  vim.o.smoothscroll = true
+  vim.o.foldexpr = "v:lua.require'ba.util'.ui.foldexpr()"
+  vim.o.foldmethod = 'expr'
+  vim.o.foldtext = ''
+else
+  vim.o.foldmethod = 'indent'
+  vim.o.foldtext = "v:lua.require'ba.util'.ui.foldtext()"
+end
+
 -- Case-insensitive searching UNLESS \C or one or more capital letters in the search term
 vim.o.ignorecase = true
 vim.o.smartcase = true
@@ -72,6 +87,7 @@ vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' } -- replace certa
 -- [[ Other Configs ]]
 _G.BA = {}
 BA.config = require 'ba.config'
+BA.util = require 'ba.util'
 
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`

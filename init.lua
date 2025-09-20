@@ -53,6 +53,10 @@ vim.o.timeoutlen = 300 -- Decrease mapped sequence wait time
 vim.o.undofile = true -- Save undo history
 vim.o.updatetime = 250 -- Decrease update time
 
+-- When non-empty, this option determines the content of the area to the
+-- side of a window, normally containing the fold, sign and number columns.
+vim.o.statuscolumn = [[%!v:lua.require'snacks.statuscolumn'.get()]]
+
 -- Case-insensitive searching UNLESS \C or one or more capital letters in the search term
 vim.o.ignorecase = true
 vim.o.smartcase = true

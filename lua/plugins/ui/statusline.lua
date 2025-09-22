@@ -38,6 +38,7 @@ return {
           lualine_c = {
             { 'diagnostics' },
             { 'filename' },
+            { 'navic', color_correction = 'dynamic' },
             {
               'diff',
               symbols = {

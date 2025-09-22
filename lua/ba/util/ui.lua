@@ -1,6 +1,4 @@
 ---@class BA.util.ui
----@class BA.util.ui
----@class BA.util.ui
 local M = {}
 
 -- foldtext for Neovim < 0.10.0

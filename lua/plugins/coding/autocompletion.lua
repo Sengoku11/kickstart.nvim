@@ -4,19 +4,6 @@ return {
     event = 'InsertEnter',
     opts = {},
   },
-  {
-    'echasnovski/mini.nvim',
-    event = 'VeryLazy',
-    config = function()
-      -- Better Around/Inside textobjects
-      --
-      -- Examples:
-      --  - va)  - Visually select Around )paren
-      --  - yinq - Yank Inside Next Quote
-      --  - ci'  - Change Inside 'quote
-      require('mini.ai').setup { n_lines = 500 }
-    end,
-  },
   { -- Surround text by `'"([{.
     'kylechui/nvim-surround',
     version = '^3.0.0', -- Use for stability; omit to use `main` branch for the latest features

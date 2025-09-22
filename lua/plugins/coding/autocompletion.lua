@@ -1,4 +1,9 @@
 return {
+  { -- automatically inserts the second bracket or quote.
+    'windwp/nvim-autopairs',
+    event = 'InsertEnter',
+    opts = {},
+  },
   {
     'echasnovski/mini.nvim',
     event = 'VeryLazy',

@@ -59,7 +59,7 @@ vim.o.statuscolumn = [[%!v:lua.require'snacks.statuscolumn'.get()]]
 
 -- Folds with a higher level will be closed by default.
 -- Setting this to zero will allways keep all fold closed by default.
-vim.o.foldlevel = 3
+vim.o.foldlevel = 99
 
 -- Fold method.
 if vim.fn.has 'nvim-0.10' == 1 then

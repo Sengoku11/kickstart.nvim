@@ -37,7 +37,7 @@ return {
           lualine_b = { { 'branch', icon = BA.config.icons.git.branch } },
           lualine_c = {
             { 'diagnostics' },
-            { 'filename' },
+            { 'filename', path = 1 },
             { 'navic', color_correction = 'dynamic' },
             {
               'diff',

@@ -62,6 +62,7 @@ return {
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = 'Search Diagnostics' })
       vim.keymap.set('n', '<leader>s.', builtin.resume, { desc = 'Search Repeat' })
       vim.keymap.set('n', '<leader>sr', builtin.oldfiles, { desc = 'Search Recent Files' })
+      vim.keymap.set('n', '<leader>sC', builtin.colorscheme, { desc = 'Search Colorscheme' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = 'Find Buffers' })
 
       -- stylua: ignore

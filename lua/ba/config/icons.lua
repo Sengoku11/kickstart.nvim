@@ -31,7 +31,7 @@ return {
     Error = I(' ', '❗'),
     Warn  = I(' ', '⚠️'),
     Hint  = I(' ', '💡'),
-    Info  = I(' ', 'ⓘ'),
+    Info  = I(' ', 'ⓘ '),
   },
   git = {
     added     = I(' ', '++'),
@@ -44,7 +44,7 @@ return {
     unstaged  = I('󰄱', '[]'),
     staged    = I('', '[✔]'),
     conflict  = I('', '[⚠]'),
-    branch    = I('', ''),
+    branch    = I('', '𖦥'),
     github    = I('', 'GH'),
   },
   lualine = {

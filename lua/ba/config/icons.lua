@@ -49,7 +49,7 @@ return {
   },
   lualine = {
     component_separators = { left = I('', '|'), right = I('', '|')},
-    section_separators = { left = I('', ' '), right = I('', ' ')},
+    section_separators = { left = I('', ''), right = I('', '')},
   },
   kinds = {
     Array         = I(' ', '[]'),

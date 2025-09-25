@@ -87,7 +87,7 @@ return {
     'folke/snacks.nvim',
     opts = function(_, opts)
       table.insert(opts.dashboard.preset.keys, 3, {
-        icon = ' ',
+        icon = BA.config.icons.dashboard.projects,
         key = 'p',
         desc = 'Projects',
         action = ':lua Snacks.picker.projects()',

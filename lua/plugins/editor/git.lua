@@ -12,7 +12,7 @@ return {
     },
     config = function()
       -- Optional keymaps
-      vim.keymap.set('n', '<leader>gs', ':Git<CR>', { desc = 'Git Status' })
+      vim.keymap.set('n', '<leader>gg', ':Git<CR>', { desc = 'Git Fugitive' })
       vim.keymap.set('n', '<leader>gb', ':GBrowse<CR>', { desc = 'Open Git Page in Browser' })
       vim.keymap.set('n', '<leader>gd', ':Gvdiffsplit<CR>', { desc = 'Git Diff' })
     end,

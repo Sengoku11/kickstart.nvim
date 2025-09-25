@@ -58,11 +58,20 @@ return {
         folder_closed = BA.config.icons.kinds.Folder,
         folder_open = BA.config.icons.kinds.FolderOpen,
         folder_empty = BA.config.icons.kinds.FolderEmpty,
+        -- The next two settings are only a fallback, if you use nvim-web-devicons and configure default icons there
+        -- then these will never be used.
+        default = '*',
+        highlight = 'NeoTreeFileIcon',
+      },
+      modified = {
+        symbol = '+',
+        highlight = 'NeoTreeModified',
       },
       git_status = {
         symbols = {
           -- Change type
           added = BA.config.icons.git.added,
+          modified = '', -- or ""
           deleted = BA.config.icons.git.deleted,
           renamed = BA.config.icons.git.renamed,
           -- Status type

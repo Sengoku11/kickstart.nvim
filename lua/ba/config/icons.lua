@@ -44,7 +44,7 @@ return {
     unstaged  = I('󰄱', '[]'),
     staged    = I('', '[✔]'),
     conflict  = I('', '[⚠]'),
-    branch    = I('', '𖦥'),
+    branch    = I('', ''), -- don't use 𖦥 for replacement, breaks statusline lol
     github    = I('', 'GH'),
   },
   lualine = {

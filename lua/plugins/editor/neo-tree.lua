@@ -23,8 +23,18 @@ return {
       bind_to_cwd = false,
       follow_current_file = { enabled = true },
       use_libuv_file_watcher = true,
+      filtered_items = {
+        always_show = { -- remains visible even if other settings would normally hide it
+          '.gitignore',
+          '.stylua.toml',
+        },
+      },
     },
+    enable_diagnostics = true,
+    enable_git_status = true,
     window = {
+      position = 'left',
+      width = 40,
       mappings = {
         ['\\'] = 'close_window',
         ['l'] = 'open',
@@ -48,7 +58,18 @@ return {
       },
     },
     default_component_configs = {
+      container = {
+        enable_character_fade = true,
+      },
       indent = {
+        indent_size = 2,
+        padding = 1, -- extra padding on left hand side
+        -- indent guides
+        with_markers = true,
+        indent_marker = '│',
+        last_indent_marker = '└',
+        highlight = 'NeoTreeIndentMarker',
+        -- expander config, needed for nesting files
         with_expanders = true, -- if nil and file nesting is enabled, will enable expanders
         expander_collapsed = BA.config.icons.kinds.Collapsed,
         expander_expanded = BA.config.icons.kinds.Expanded,

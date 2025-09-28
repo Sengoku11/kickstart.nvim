@@ -40,6 +40,7 @@ return {
         ['l'] = 'open',
         ['h'] = 'close_node',
         ['<space>'] = 'none',
+        ['<esc>'] = 'close_window',
         ['e'] = function(state)
           -- per-buffer flag so each tree remembers its last mode
           local src = state.name or state.source or 'filesystem'

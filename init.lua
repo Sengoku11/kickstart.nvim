@@ -53,6 +53,9 @@ vim.o.timeoutlen = 300 -- Decrease mapped sequence wait time
 vim.o.undofile = true -- Save undo history
 vim.o.updatetime = 250 -- Decrease update time
 
+-- Disable vertical / horizontal scroll by mouse and trackpad.
+vim.o.mousescroll = 'ver:3,hor:0'
+
 -- When non-empty, this option determines the content of the area to the
 -- side of a window, normally containing the fold, sign and number columns.
 vim.o.statuscolumn = [[%!v:lua.require'snacks.statuscolumn'.get()]]

@@ -40,6 +40,25 @@ return {
         ['l'] = 'open',
         ['h'] = 'close_node',
         ['<space>'] = 'none',
+        ['e'] = function(state)
+          -- per-buffer flag so each tree remembers its last mode
+          local src = state.name or state.source or 'filesystem'
+          local flag_key = ('neotree_toggle_all_%s'):format(src)
+          local was_expanded = vim.b[flag_key] == true
+
+          local ok, cmds = pcall(require, 'neo-tree.sources.' .. src .. '.commands')
+          if not ok then
+            return
+          end
+
+          if was_expanded then
+            cmds.close_all_nodes(state)
+          else
+            cmds.expand_all_nodes(state)
+          end
+
+          vim.b[flag_key] = not was_expanded
+        end,
         ['Y'] = {
           function(state)
             local node = state.tree:get_node()

@@ -1,8 +1,44 @@
+---@module 'snacks'
 return {
   {
     'folke/snacks.nvim',
     ---@type snacks.Config
     opts = {
+      ---@type table<string, snacks.win.Config>
+      styles = {
+        -- When opening the dashboard during startup, only the bo and wo options are used.
+        -- The other options are used with :lua Snacks.dashboard()
+        dashboard = {
+          -- zindex = 10,
+          -- height = 0,
+          -- width = 0,
+          bo = {
+            bufhidden = 'wipe',
+            buftype = 'nofile',
+            buflisted = false,
+            filetype = 'snacks_dashboard',
+            swapfile = false,
+            undofile = false,
+          },
+          wo = {
+            colorcolumn = '',
+            cursorcolumn = false,
+            cursorline = false,
+            foldmethod = 'manual',
+            list = false,
+            number = false,
+            relativenumber = false,
+            sidescrolloff = 0,
+            signcolumn = 'no',
+            spell = false,
+            statuscolumn = '',
+            statusline = '',
+            winbar = '',
+            winhighlight = 'Normal:SnacksDashboardNormal,NormalFloat:SnacksDashboardNormal',
+            wrap = false,
+          },
+        },
+      },
       dashboard = {
         preset = {
           -- stylua: ignore

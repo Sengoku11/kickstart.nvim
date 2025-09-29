@@ -11,6 +11,34 @@ return {
             keys = { ['<a-c>'] = { 'toggle_cwd', mode = { 'n', 'i' } } },
           },
         },
+        prompt = ' > ',
+        icons = {
+          files = {
+            enabled = vim.g.have_nerd_font,
+            -- dir = BA.config.icons.kinds.Folder,
+            -- dir_open = BA.config.icons.kinds.FolderOpen,
+            -- file = '* ',
+          },
+          keymaps = {
+            nowait = '󰓅 ',
+          },
+          tree = {
+            vertical = '│ ',
+            middle = '├╴',
+            last = '└╴',
+          },
+          undo = {
+            saved = ' ',
+          },
+          ui = {
+            live = '󰐰 ',
+            hidden = 'h',
+            ignored = 'i',
+            follow = 'f',
+            selected = '● ',
+            unselected = '○ ',
+          },
+        },
       },
     },
     -- stylua: ignore

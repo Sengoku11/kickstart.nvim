@@ -40,6 +40,12 @@ return {
         },
       },
       dashboard = {
+        enabled = true,
+        width = 60,
+        row = nil, -- dashboard position. nil for center
+        col = nil, -- dashboard position. nil for center
+        pane_gap = 4, -- empty columns between vertical panes
+        autokeys = '1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', -- autokey sequence
         preset = {
           -- stylua: ignore
           keys = {
@@ -60,10 +66,6 @@ return {
 ██║ ╚████║███████╗╚██████╔╝ ╚████╔╝ ██║██║ ╚═╝ ██║
 ╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝]],
         },
-        enabled = true,
-        -- your dashboard configuration comes here
-        -- or leave it empty to use the default settings
-        -- refer to the configuration section below
         sections = {
           { section = 'header' },
           { section = 'keys', gap = 1, padding = 2 },

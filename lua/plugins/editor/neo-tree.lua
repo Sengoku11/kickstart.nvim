@@ -12,7 +12,7 @@ return {
   },
   event = 'UIEnter',
   keys = {
-    { '\\', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
+    -- { '\\', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
     { '<leader>os', ':Neotree git_status<CR>', desc = 'NeoTree Open Git Status', silent = true },
     { '<leader>ob', ':Neotree buffers<CR>', desc = 'NeoTree Open Buffers', silent = true },
   },
@@ -36,7 +36,7 @@ return {
       position = 'left',
       width = 40,
       mappings = {
-        ['\\'] = 'close_window',
+        -- ['\\'] = 'close_window',
         ['l'] = 'open',
         ['h'] = 'close_node',
         ['<space>'] = 'none',

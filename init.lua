@@ -126,5 +126,11 @@ vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper win
 -- Install and run Lazy plugin manager.
 require 'plugins.lazy'
 
+-- Quit the current window
+-- TODO: move it into another section, as it depends on the Lazy and Snacks.
+vim.keymap.set('n', 'dq', function()
+  require('snacks').bufdelete(0) -- 0 = current buffer
+end, { desc = 'Close buffer (keep window)', silent = true })
+
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et

@@ -97,6 +97,7 @@ return {
         map('n', '<leader>hh', gitsigns.preview_hunk, { desc = 'Hunk Hovered' })
         map('n', '<leader>hi', gitsigns.preview_hunk_inline, { desc = 'Hunk Inline' })
         map('n', '<leader>hb', gitsigns.blame_line, { desc = 'Blame Line' })
+        map('n', '<leader>hB', BA.util.git.diff_with_blame_commit, { desc = 'Diff with blame commit (parent → commit)' })
         map('n', '<leader>gd', gitsigns.diffthis, { desc = 'Diff against Index' })
         -- map('n', '<leader>hD', function() gitsigns.diffthis '@' end, { desc = 'git Diff against last commit' }) -- better use fugitive
         -- Toggles

@@ -26,6 +26,7 @@ return {
 
       local opts = {
         options = {
+          icons_enabled = vim.g.have_nerd_font,
           theme = 'auto',
           globalstatus = vim.o.laststatus == 3,
           disabled_filetypes = { statusline = { 'dashboard', 'alpha', 'ministarter', 'snacks_dashboard' } },
@@ -36,7 +37,15 @@ return {
           lualine_a = { 'mode' },
           lualine_b = { { 'branch', icon = BA.config.icons.git.branch } },
           lualine_c = {
-            { 'diagnostics' },
+            {
+              'diagnostics',
+              symbols = {
+                error = BA.config.icons.diagnostics.Error,
+                warn = BA.config.icons.diagnostics.Warn,
+                info = BA.config.icons.diagnostics.Info,
+                hint = BA.config.icons.diagnostics.Hint,
+              },
+            },
             { 'filename', path = 1 },
             { 'navic', color_correction = 'dynamic' },
             {

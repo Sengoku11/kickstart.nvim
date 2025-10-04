@@ -146,10 +146,10 @@ return {
         underline = { severity = vim.diagnostic.severity.ERROR },
         signs = vim.g.have_nerd_font and {
           text = {
-            [vim.diagnostic.severity.ERROR] = '󰅚 ',
-            [vim.diagnostic.severity.WARN] = '󰀪 ',
-            [vim.diagnostic.severity.INFO] = '󰋽 ',
-            [vim.diagnostic.severity.HINT] = '󰌶 ',
+            [vim.diagnostic.severity.ERROR] = BA.config.icons.diagnostics.Error,
+            [vim.diagnostic.severity.WARN] = BA.config.icons.diagnostics.Warn,
+            [vim.diagnostic.severity.HINT] = BA.config.icons.diagnostics.Hint,
+            [vim.diagnostic.severity.INFO] = BA.config.icons.diagnostics.Info,
           },
         } or {},
         virtual_text = {

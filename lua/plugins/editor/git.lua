@@ -99,10 +99,11 @@ return {
         map('n', '<leader>hb', gitsigns.blame_line, { desc = 'Blame Line' })
         map('n', '<leader>hB', BA.util.git.diff_with_blame_commit, { desc = 'Diff with blame commit (parent → commit)' })
         map('n', '<leader>gd', gitsigns.diffthis, { desc = 'Diff against Index' })
-        -- map('n', '<leader>hD', function() gitsigns.diffthis '@' end, { desc = 'git Diff against last commit' }) -- better use fugitive
+        -- stylua: ignore
+        map('n', '<leader>hd', function() gitsigns.diffthis '@' end, { desc = 'Diff against last commit' })
         -- Toggles
         map('n', '<leader>tb', gitsigns.toggle_current_line_blame, { desc = 'Toggle Git Blame' })
-        map('n', '<leader>tD', gitsigns.preview_hunk_inline, { desc = 'Toggle Show Deleted' })
+        map('n', '<leader>tw', gitsigns.toggle_word_diff, { desc = 'Toggle Git Word' })
       end,
     },
   },

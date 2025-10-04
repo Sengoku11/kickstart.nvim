@@ -1,6 +1,32 @@
--- Adds git related signs to the gutter, as well as utilities for managing changes
--- NOTE: gitsigns is already included in init.lua but contains only the base
--- config. This will add also the recommended keymaps.
+local aug = vim.api.nvim_create_augroup('FugitiveDiffQuit', { clear = true })
+
+-- 1) Fugitive / git buffers: close buffer with `q`
+vim.api.nvim_create_autocmd('FileType', {
+  group = aug,
+  pattern = { 'git', 'fugitive', 'fugitiveblame' },
+  callback = function(ev)
+    vim.keymap.set('n', 'q', function()
+      if vim.fn.bufnr '$' == 1 then
+        vim.cmd 'quit'
+      else
+        vim.cmd 'bdelete'
+      end
+    end, { buffer = ev.buf, silent = true, desc = 'Quit Fugitive buffer' })
+  end,
+})
+
+-- 2) Any diff window (e.g. after :Gvdiffsplit): quit diff with `q`
+vim.api.nvim_create_autocmd('OptionSet', {
+  group = aug,
+  pattern = 'diff',
+  callback = function(ev)
+    if vim.wo.diff then
+      vim.keymap.set('n', 'q', ':<C-U>call fugitive#DiffClose()<CR>', { desc = 'Quit Diff' })
+    else
+      pcall(vim.api.nvim_buf_del_keymap, ev.buf, 'n', 'q')
+    end
+  end,
+})
 
 return {
   {
@@ -13,11 +39,11 @@ return {
     config = function()
       -- Optional keymaps
       vim.keymap.set('n', '<leader>gg', ':Git<CR>', { desc = 'Git Fugitive' })
-      vim.keymap.set('n', '<leader>gb', ':GBrowse<CR>', { desc = 'Open Git Page in Browser' })
-      vim.keymap.set('n', '<leader>gd', ':Gvdiffsplit<CR>', { desc = 'Git Diff' })
+      vim.keymap.set('n', '<leader>gp', ':GBrowse<CR>', { desc = 'Open Git Page in Browser' })
     end,
   },
   {
+    -- Adds git related signs to the gutter, as well as utilities for managing changes
     'lewis6991/gitsigns.nvim',
     event = 'VeryLazy',
     opts = {
@@ -71,7 +97,7 @@ return {
         map('n', '<leader>hh', gitsigns.preview_hunk, { desc = 'Hunk Hovered' })
         map('n', '<leader>hi', gitsigns.preview_hunk_inline, { desc = 'Hunk Inline' })
         map('n', '<leader>hb', gitsigns.blame_line, { desc = 'Blame Line' })
-        map('n', '<leader>hd', gitsigns.diffthis, { desc = 'Diff against Index' })
+        map('n', '<leader>gd', gitsigns.diffthis, { desc = 'Diff against Index' })
         -- map('n', '<leader>hD', function() gitsigns.diffthis '@' end, { desc = 'git Diff against last commit' }) -- better use fugitive
         -- Toggles
         map('n', '<leader>tb', gitsigns.toggle_current_line_blame, { desc = 'Toggle Git Blame' })

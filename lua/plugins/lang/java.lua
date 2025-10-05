@@ -25,10 +25,10 @@ return {
         capabilities = capabilities,
       }
 
-      require('lspconfig').jdtls.setup {
+      vim.lsp.config('jdtls', {
         -- Your custom nvim-java configuration goes here
         capabilities = capabilities,
-      }
+      })
     end,
   },
 }

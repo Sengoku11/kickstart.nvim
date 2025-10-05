@@ -1,9 +1,9 @@
 return {
   'mbbill/undotree',
-  enabled = false, -- disable if using snacks picker.
+  enabled = true, -- disable if using snacks picker.
   -- Load the plugin when these keys/commands are used
   keys = {
-    { '<leader>u', '<cmd>UndotreeToggle<cr>', desc = 'Toggle UndoTree' },
+    { '<leader>uu', '<cmd>UndotreeToggle<cr>', desc = 'Toggle UndoTree' },
   },
   cmd = { 'UndotreeToggle', 'UndotreeShow', 'UndotreeHide' },
 

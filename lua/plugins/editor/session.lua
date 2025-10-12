@@ -1,3 +1,15 @@
+-- Prevent opening empty buffer on session restore.
+vim.api.nvim_create_autocmd('User', {
+  pattern = 'PersistenceSavePre',
+  callback = function()
+    for _, b in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.bo[b].filetype == 'copilot-chat' or vim.bo[b].filetype == 'snacks_layout_box' then
+        vim.cmd.bunload(b)
+      end
+    end
+  end,
+})
+
 return {
   -- Session management. This saves your session in the background,
   -- keeping track of open buffers, window arrangement, and more.

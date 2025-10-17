@@ -1,3 +1,4 @@
+---@module 'snacks'
 return {
   -- lazy.nvim
   {

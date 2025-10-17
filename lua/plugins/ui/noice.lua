@@ -2,14 +2,14 @@ return {
   {
     'folke/noice.nvim',
     event = 'VeryLazy',
-    enabled = false,
+    enabled = true,
     dependencies = {
       -- if you lazy-load any plugin below, make sure to add proper `module="..."` entries
       'MunifTanjim/nui.nvim',
       -- OPTIONAL:
       --   `nvim-notify` is only needed, if you want to use the notification view.
       --   If not available, we use `mini` as the fallback
-      'rcarriga/nvim-notify',
+      -- 'rcarriga/nvim-notify',
     },
     -- stylua: ignore
     keys = {
@@ -40,6 +40,9 @@ return {
         long_message_to_split = false, -- long messages will be sent to a split
         inc_rename = false, -- enables an input dialog for inc-rename.nvim
         lsp_doc_border = false, -- add a border to hover docs and signature help
+      },
+      messages = {
+        enabled = false,
       },
       cmdline = {
         format = {

@@ -24,6 +24,19 @@ return {
 
       vim.o.laststatus = vim.g.lualine_laststatus
 
+      -- stylua: ignore
+      local has_noice = function() local ok, n = pcall(require, 'noice'); return ok and n.api and n.api.status end
+      -- stylua: ignore
+      local noice_cmd_get = function() local ok, n = pcall(require, 'noice'); return (ok and n.api.status.command.get()) or '' end
+      -- stylua: ignore
+      local noice_cmd_has = function() local ok, n = pcall(require, 'noice'); return ok and n.api.status.command.has() end
+      -- stylua: ignore
+      local noice_mode_get = function() local ok, n = pcall(require, 'noice'); return (ok and n.api.status.mode.get()) or '' end
+      -- stylua: ignore
+      local noice_mode_has = function() local ok, n = pcall(require, 'noice'); return ok and n.api.status.mode.has() end
+      -- stylua: ignore
+      local color_of = function(hl) local ok, S = pcall(require, 'snacks'); return (ok and S.util and S.util.color) and { fg = S.util.color(hl) } or nil end
+
       local opts = {
         options = {
           icons_enabled = vim.g.have_nerd_font,
@@ -67,8 +80,13 @@ return {
               end,
             },
           },
-
-          lualine_x = { 'filesize' },
+          lualine_x = {
+            -- stylua: ignore
+            { noice_cmd_get,  cond = function() return has_noice() and noice_cmd_has() end,  color = function() return color_of('Statement') end },
+            -- stylua: ignore
+            { noice_mode_get, cond = function() return has_noice() and noice_mode_has() end, color = function() return color_of('Constant') end },
+            'filesize',
+          },
           lualine_y = {
             { 'filetype' },
             { 'progress', separator = ' ', padding = { left = 1, right = 0 } },

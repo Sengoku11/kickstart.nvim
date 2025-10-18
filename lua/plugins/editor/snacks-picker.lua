@@ -38,6 +38,7 @@ return {
             selected = '● ',
             unselected = '○ ',
           },
+          diagnostics = BA.config.icons.diagnostics,
         },
       },
     },

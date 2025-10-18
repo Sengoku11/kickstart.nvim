@@ -24,18 +24,17 @@ return {
 
       vim.o.laststatus = vim.g.lualine_laststatus
 
-      -- stylua: ignore
-      local has_noice = function() local ok, n = pcall(require, 'noice'); return ok and n.api and n.api.status end
-      -- stylua: ignore
-      local noice_cmd_get = function() local ok, n = pcall(require, 'noice'); return (ok and n.api.status.command.get()) or '' end
-      -- stylua: ignore
-      local noice_cmd_has = function() local ok, n = pcall(require, 'noice'); return ok and n.api.status.command.has() end
-      -- stylua: ignore
-      local noice_mode_get = function() local ok, n = pcall(require, 'noice'); return (ok and n.api.status.mode.get()) or '' end
-      -- stylua: ignore
-      local noice_mode_has = function() local ok, n = pcall(require, 'noice'); return ok and n.api.status.mode.has() end
-      -- stylua: ignore
-      local color_of = function(hl) local ok, S = pcall(require, 'snacks'); return (ok and S.util and S.util.color) and { fg = S.util.color(hl) } or nil end
+      -- [[ Noice Integration ]]
+      -- stylua: ignore start
+      local has_noice        = function() local ok, n = pcall(require, 'noice'); return ok and n.api and n.api.status end
+      local noice_cmd_get    = function() local ok, n = pcall(require, 'noice'); return (ok and n.api.status.command.get()) or '' end
+      local noice_cmd_has    = function() local ok, n = pcall(require, 'noice'); return ok and n.api.status.command.has() end
+      local noice_mode_get   = function() local ok, n = pcall(require, 'noice'); return (ok and n.api.status.mode.get()) or '' end
+      local noice_mode_has   = function() local ok, n = pcall(require, 'noice'); return ok and n.api.status.mode.has() end
+      local noice_search_has = function() local ok, n = pcall(require, 'noice'); return ok and n.api.status.search.has() end
+      local noice_search_get = function() local ok, n = pcall(require, 'noice'); return ok and n.api.status.search.get() end
+      local color_of         = function(hl) local ok, S = pcall(require, 'snacks'); return (ok and S.util and S.util.color) and { fg = S.util.color(hl) } or nil end
+      -- stylua: ignore end
 
       local opts = {
         options = {
@@ -81,10 +80,11 @@ return {
             },
           },
           lualine_x = {
-            -- stylua: ignore
+            -- stylua: ignore start
             { noice_cmd_get,  cond = function() return has_noice() and noice_cmd_has() end,  color = function() return color_of('Statement') end },
-            -- stylua: ignore
             { noice_mode_get, cond = function() return has_noice() and noice_mode_has() end, color = function() return color_of('Constant') end },
+            -- { noice_search_get, cond = function() return has_noice() and noice_search_has() end, color = function() return color_of('Constant') end },
+            -- -- stylua: ignore end
             'filesize',
           },
           lualine_y = {

@@ -64,6 +64,7 @@ return {
                   ['.'] = 'explorer_focus',
                   ['I'] = 'toggle_ignored',
                   ['H'] = 'toggle_hidden',
+                  ['s'] = { 'edit_vsplit', mode = 'n' },
                   ['Z'] = 'explorer_close_all',
                   [']g'] = 'explorer_git_next',
                   ['[g'] = 'explorer_git_prev',

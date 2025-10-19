@@ -1,10 +1,21 @@
 -- Prevent opening empty buffer on session restore.
+local unload_fts = {
+  ['copilot-chat'] = true,
+  ['snacks_layout_box'] = true, -- snacks.explorer
+  ['Trouble'] = true,
+  ['trouble'] = true,
+  ['terminal'] = true,
+}
+
 vim.api.nvim_create_autocmd('User', {
   pattern = 'PersistenceSavePre',
   callback = function()
-    for _, b in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.bo[b].filetype == 'copilot-chat' or vim.bo[b].filetype == 'snacks_layout_box' then
-        vim.cmd.bunload(b)
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) then
+        local ft = vim.bo[buf].filetype
+        if unload_fts[ft] then
+          vim.cmd.bunload(buf)
+        end
       end
     end
   end,

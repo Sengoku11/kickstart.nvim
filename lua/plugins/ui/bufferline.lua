@@ -34,6 +34,16 @@ return {
         close_icon = BA.config.icons.bufferline.close_icon,
         left_trunc_marker = BA.config.icons.bufferline.left_trunc_marker,
         right_trunc_marker = BA.config.icons.bufferline.right_trunc_marker,
+        indicator = {
+          icon = '┃', -- this should be omitted if indicator style is not 'icon'
+          style = 'icon', -- 'icon' | 'underline' | 'none',
+        },
+        hover = {
+          enabled = true,
+          delay = 100,
+          reveal = { 'close' },
+        },
+        separator_style = { '', '' }, -- "slant" | "slope" | "thick" | "thin" | { 'any', 'any' },
         offsets = {
           {
             filetype = 'neo-tree',
@@ -47,7 +57,7 @@ return {
         },
         -----@param opts bufferline.IconFetcherOpts
         -- get_element_icon = function(opts)
-        --   return LazyVim.config.icons.ft[opts.filetype]
+        --   return BA.config.icons.ft[opts.filetype]
         -- end,
       },
     },

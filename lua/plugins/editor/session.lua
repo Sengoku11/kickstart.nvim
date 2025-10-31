@@ -5,6 +5,7 @@ local unload_fts = {
   ['Trouble'] = true,
   ['trouble'] = true,
   ['terminal'] = true,
+  ['blame'] = true,
 }
 
 vim.api.nvim_create_autocmd('User', {

@@ -42,8 +42,21 @@ return {
       vim.keymap.set('n', '<leader>gp', ':GBrowse<CR>', { desc = 'Open Git Page in Browser' })
     end,
   },
+
+  -- A nicer gitblame for statuscolumn (Jetbrains style).
+  -- BUG: Conflicting with snacks-picker, toggle-off when using
   {
-    -- Adds git related signs to the gutter, as well as utilities for managing changes
+    'Yu-Leo/blame-column.nvim',
+    opts = {}, -- for default options. Refer to the configuration section for custom setup.
+    cmd = 'BlameColumnToggle',
+    -- stylua: ignore
+    keys = {
+      { '<leader>bb', mode = { 'n', 'x' }, function() require('blame-column').toggle() end, desc = 'Git: toggle blame' },
+    },
+  },
+
+  -- Adds git related signs to the gutter, as well as utilities for managing changes
+  {
     'lewis6991/gitsigns.nvim',
     event = 'VeryLazy',
     opts = {

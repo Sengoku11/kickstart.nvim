@@ -10,7 +10,7 @@ return {
     { 'nvim-tree/nvim-web-devicons', enabled = vim.g.have_nerd_font },
     'MunifTanjim/nui.nvim',
   },
-  event = 'UIEnter',
+  event = 'VeryLazy',
   keys = {
     -- { '\\', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
     { '<leader>os', ':Neotree git_status<CR>', desc = 'NeoTree Open Git Status', silent = true },

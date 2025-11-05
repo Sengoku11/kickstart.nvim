@@ -12,6 +12,7 @@ return {
           },
         },
         prompt = ' > ',
+        ---@field icons? snacks.picker.icons
         icons = {
           files = {
             enabled = vim.g.have_nerd_font,

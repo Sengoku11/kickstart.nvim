@@ -1,5 +1,3 @@
-local aug = vim.api.nvim_create_augroup('FugitiveDiffQuit', { clear = true })
-
 return {
   {
     'tpope/vim-fugitive',

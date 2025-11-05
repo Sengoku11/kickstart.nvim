@@ -1,6 +1,8 @@
 ---@class BA.util.git
 local M = {}
 
+local aug = vim.api.nvim_create_augroup('GitQuit', { clear = true })
+
 -- Close Fugitive / git buffers with `q`
 vim.api.nvim_create_autocmd('FileType', {
   group = aug,

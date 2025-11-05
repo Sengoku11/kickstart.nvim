@@ -1,33 +1,5 @@
 local aug = vim.api.nvim_create_augroup('FugitiveDiffQuit', { clear = true })
 
--- 1) Fugitive / git buffers: close buffer with `q`
-vim.api.nvim_create_autocmd('FileType', {
-  group = aug,
-  pattern = { 'git', 'fugitive', 'fugitiveblame' },
-  callback = function(ev)
-    vim.keymap.set('n', 'q', function()
-      if vim.fn.bufnr '$' == 1 then
-        vim.cmd 'quit'
-      else
-        vim.cmd 'bdelete'
-      end
-    end, { buffer = ev.buf, silent = true, desc = 'Quit Fugitive buffer' })
-  end,
-})
-
--- 2) Any diff window (e.g. after :Gvdiffsplit): quit diff with `q`
-vim.api.nvim_create_autocmd('OptionSet', {
-  group = aug,
-  pattern = 'diff',
-  callback = function(ev)
-    if vim.wo.diff then
-      vim.keymap.set('n', 'q', ':<C-U>call fugitive#DiffClose()<CR>', { desc = 'Quit Diff' })
-    else
-      pcall(vim.api.nvim_buf_del_keymap, ev.buf, 'n', 'q')
-    end
-  end,
-})
-
 return {
   {
     'tpope/vim-fugitive',
@@ -111,9 +83,9 @@ return {
         map('n', '<leader>hi', gitsigns.preview_hunk_inline, { desc = 'Hunk Inline' })
         map('n', '<leader>hb', gitsigns.blame_line, { desc = 'Blame Line' })
         map('n', '<leader>hB', BA.util.git.diff_with_blame_commit, { desc = 'Diff with blame commit (parent → commit)' })
-        map('n', '<leader>gd', gitsigns.diffthis, { desc = 'Diff against Index' })
+        map('n', '<leader>hd', gitsigns.diffthis, { desc = 'Diff against Index' })
         -- stylua: ignore
-        map('n', '<leader>hd', function() gitsigns.diffthis '@' end, { desc = 'Diff against last commit' })
+        map('n', '<leader>gd', function() gitsigns.diffthis '@' end, { desc = 'Diff against last commit' })
         -- Toggles
         map('n', '<leader>tb', gitsigns.toggle_current_line_blame, { desc = 'Toggle Git Blame' })
         map('n', '<leader>tw', gitsigns.toggle_word_diff, { desc = 'Toggle Git Word' })

@@ -1,6 +1,51 @@
 ---@class BA.util.git
 local M = {}
 
+-- Close Fugitive / git buffers with `q`
+vim.api.nvim_create_autocmd('FileType', {
+  group = aug,
+  pattern = { 'git', 'fugitive', 'fugitiveblame' },
+  callback = function(ev)
+    vim.keymap.set('n', 'q', function()
+      if vim.fn.bufnr '$' == 1 then
+        vim.cmd 'quit'
+      else
+        vim.cmd 'bdelete'
+      end
+    end, { buffer = ev.buf, silent = true, desc = 'Quit Fugitive buffer' })
+  end,
+})
+
+-- Quit gitsigns diff window with `q`
+vim.api.nvim_create_autocmd('OptionSet', {
+  group = aug,
+  pattern = 'diff',
+  callback = function(e)
+    vim.keymap.set('n', 'q', function()
+      local has_diff = vim.wo.diff
+      local target_win
+      if not has_diff then
+        return 'q'
+      end
+      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        local name = vim.api.nvim_buf_get_name(buf)
+        if type(name) == 'string' and name:match '^gitsigns://' then
+          target_win = win
+          break
+        end
+      end
+      if target_win then
+        vim.schedule(function()
+          vim.api.nvim_win_close(target_win, true)
+        end)
+        return ''
+      end
+      return 'q'
+    end, { expr = true, silent = true, buffer = e.buf })
+  end,
+})
+
 -- Diff current line's blame commit vs its parent for THIS file only,
 -- handling root commits and renames inside that commit, in its own tabpage.
 function M.diff_with_blame_commit()

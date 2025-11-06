@@ -41,6 +41,18 @@ return {
           },
           diagnostics = BA.config.icons.diagnostics,
         },
+        ---@class snacks.picker.previewers.Config
+        previewers = {
+          diff = {
+            -- fancy: Snacks fancy diff (borders, multi-column line numbers, syntax highlighting)
+            -- syntax: Neovim's built-in diff syntax highlighting
+            -- terminal: external command (git's pager for git commands, `cmd` for other diffs)
+            style = 'fancy', ---@type "fancy"|"syntax"|"terminal"
+          },
+          git = {
+            args = {}, -- additional arguments passed to the git command. Useful to set pager options usin `-c ...`
+          },
+        },
       },
     },
     -- stylua: ignore
@@ -102,6 +114,8 @@ return {
       { "gr", function() Snacks.picker.lsp_references() end, nowait = true, desc = "References" },
       { "gI", function() Snacks.picker.lsp_implementations() end, desc = "Goto Implementation" },
       { "gy", function() Snacks.picker.lsp_type_definitions() end, desc = "Goto T[y]pe Definition" },
+      -- { "gai", function() Snacks.picker.lsp_incoming_calls() end, desc = "C[a]lls Incoming" },
+      -- { "gao", function() Snacks.picker.lsp_outgoing_calls() end, desc = "C[a]lls Outgoing" },
       { "<leader>ss", function() Snacks.picker.lsp_symbols() end, desc = "LSP Symbols" },
       { "<leader>sS", function() Snacks.picker.lsp_workspace_symbols() end, desc = "LSP Workspace Symbols" },
     },

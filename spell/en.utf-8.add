@@ -1,3 +1,9 @@
+128-bit
+16-bit
+256-bit
+32-bit
+64-bit
+8-bit
 API
 APIs
 Ansible
@@ -86,6 +92,7 @@ cjs
 cmake
 cmp
 conf
+config
 conftest
 containerd
 counterparty
@@ -105,10 +112,12 @@ debounced
 defi
 denormalized
 desc
+dev
 devnet
 dockerfile
 dotenv
 dotenvs
+dotfiles
 drizzleorm
 dst
 dto
@@ -424,6 +433,7 @@ utils
 vaultkv
 vaultkv2
 vercel
+versioned
 vimrc
 vitepress
 vo

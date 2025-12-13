@@ -1,12 +1,12 @@
+-- lua/plugins/mason.lua
 return {
   {
-    -- Mason core: manages external tools installed in Neovim's data dir
     'mason-org/mason.nvim',
     event = 'VeryLazy',
     opts = {},
   },
+
   {
-    -- Bridge between Mason and LSP servers
     'mason-org/mason-lspconfig.nvim',
     event = 'VeryLazy',
     dependencies = {
@@ -14,13 +14,26 @@ return {
       'neovim/nvim-lspconfig',
     },
     opts = {
-      -- LSP servers and tools to install via Mason
       ensure_installed = {
         'lua_ls',
         'harper_ls',
-        'stylua',
       },
-      automatic_installation = true,
+
+      -- NOTE:
+      -- mason-lspconfig auto-enables installed servers by default.
+      -- Disable it completely, OR exclude, OR whitelist only.
+      -- Pick ONE of the following:
+
+      -- (A) Disable auto-enable entirely:
+      automatic_enable = false,
+
+      -- (B) Exclude specific tools only:
+      -- automatic_enable = {
+      --   exclude = { 'harper_ls' },
+      -- },
+
+      -- (C) Only auto-enable these servers:
+      -- automatic_enable = { "lua_ls" },
     },
   },
 }

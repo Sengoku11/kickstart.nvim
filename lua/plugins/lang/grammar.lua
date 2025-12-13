@@ -1,15 +1,10 @@
 return {
   {
     'neovim/nvim-lspconfig',
-    event = 'VeryLazy',
-    dependencies = {
-      'saghen/blink.cmp',
-    },
-    config = function()
-      local capabilities = require('blink.cmp').get_lsp_capabilities()
+    opts = function(_, opts)
+      opts.servers = opts.servers or {}
 
-      vim.lsp.config('harper_ls', {
-        capabilities = capabilities,
+      opts.servers.harper_ls = vim.tbl_deep_extend('force', opts.servers.harper_ls or {}, {
         settings = {
           ['harper-ls'] = {
             userDictPath = '',
@@ -28,12 +23,8 @@ return {
               Matcher = true,
               CorrectNumberSuffix = true,
             },
-            codeActions = {
-              ForceStable = false,
-            },
-            markdown = {
-              IgnoreLinkTitle = false,
-            },
+            codeActions = { ForceStable = false },
+            markdown = { IgnoreLinkTitle = false },
             diagnosticSeverity = 'hint',
             isolateEnglish = false,
             dialect = 'American',
@@ -43,8 +34,6 @@ return {
           },
         },
       })
-
-      vim.lsp.enable 'harper_ls'
     end,
   },
 }

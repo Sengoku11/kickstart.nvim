@@ -15,6 +15,7 @@ require('lazy').setup {
   spec = {
     { import = 'plugins.ui' },
     { import = 'plugins.editor' },
+    { import = 'plugins.mason' }, -- LSP and tools installer
     { import = 'plugins.coding' },
     { import = 'plugins.lang.daml' },
     { import = 'plugins.lang.rust' },

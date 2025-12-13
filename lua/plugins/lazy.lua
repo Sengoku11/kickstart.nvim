@@ -19,6 +19,7 @@ require('lazy').setup {
     { import = 'plugins.coding' },
     { import = 'plugins.lang.daml' },
     { import = 'plugins.lang.rust' },
+    { import = 'plugins.lang.grammar' },
     { import = 'plugins.uncategorized' },
   },
   ui = {

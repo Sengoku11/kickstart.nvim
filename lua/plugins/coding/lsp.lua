@@ -49,6 +49,24 @@ return {
             vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
           end
 
+          -- ]d / [d => only WARN+
+          map(']d', function()
+            vim.diagnostic.jump { count = 1, severity = { min = vim.diagnostic.severity.WARN } }
+          end, 'Next Diagnostic (Warn+)')
+
+          map('[d', function()
+            vim.diagnostic.jump { count = -1, severity = { min = vim.diagnostic.severity.WARN } }
+          end, 'Prev Diagnostic (Warn+)')
+
+          -- ]h / [h => only HINT
+          map(']h', function()
+            vim.diagnostic.jump { count = 1, severity = vim.diagnostic.severity.HINT }
+          end, 'Next Hint')
+
+          map('[h', function()
+            vim.diagnostic.jump { count = -1, severity = vim.diagnostic.severity.HINT }
+          end, 'Prev Hint')
+
           -- This function resolves a difference between Neovim nightly (version 0.11) and stable (version 0.10)
           ---@param client vim.lsp.Client
           ---@param method vim.lsp.protocol.Method

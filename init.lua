@@ -84,7 +84,7 @@ vim.o.splitright = true
 vim.o.splitbelow = true
 
 -- Make whitespace visible
-vim.o.list = true
+vim.o.list = false
 vim.opt.listchars = { tab = '» ', trail = '·', nbsp = '␣' } -- replace certain whitespace characters
 
 -- ---- indent behavior: keep file's style predictable ----

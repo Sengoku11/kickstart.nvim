@@ -6,6 +6,8 @@ local unload_fts = {
   ['trouble'] = true,
   ['terminal'] = true,
   ['blame'] = true,
+  ['undotree'] = true,
+  ['diff'] = true,
 }
 
 vim.api.nvim_create_autocmd('User', {

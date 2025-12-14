@@ -2,7 +2,6 @@
 return {
   {
     'folke/snacks.nvim',
-    event = 'UIEnter',
 
     init = function()
       -- Custom operator for <leader>s{motion} to grep the text covered by that motion

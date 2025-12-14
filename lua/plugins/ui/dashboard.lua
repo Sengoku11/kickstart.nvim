@@ -2,6 +2,8 @@
 return {
   {
     'folke/snacks.nvim',
+    lazy = false,
+    priority = 1000,
     ---@type snacks.Config
     opts = {
       ---@type table<string, snacks.win.Config>

@@ -61,7 +61,7 @@ vim.o.mousescroll = 'ver:3,hor:0'
 vim.o.statuscolumn = [[%!v:lua.require'snacks.statuscolumn'.get()]]
 
 -- Folds with a higher level will be closed by default.
--- Setting this to zero will allways keep all fold closed by default.
+-- Setting this to zero will always keep all fold closed by default.
 vim.o.foldlevel = 99
 
 -- Fold method.
@@ -93,7 +93,7 @@ vim.o.smartindent = true
 vim.o.copyindent = true
 vim.o.preserveindent = true
 
--- [[ Other Configs ]]
+-- [[ Other Config ]]
 _G.BA = {}
 BA.config = require 'ba.config'
 BA.util = require 'ba.util'

@@ -6,7 +6,7 @@ return {
     main = 'ibl',
     opts = {},
   },
-  { -- Finds and lists all of the TODO, HACK, BUG, etc comment
+  { -- Finds and lists all the TODO, HACK, BUG, etc comment
     -- in your project and loads them into a browsable list.
     'folke/todo-comments.nvim',
     event = 'VeryLazy',

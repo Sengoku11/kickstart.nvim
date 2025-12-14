@@ -18,7 +18,7 @@ External Requirements:
   - if you have it set `vim.g.have_nerd_font` in `init.lua` to true
 - Emoji fonts (Ubuntu only, and only if you want emoji!) `sudo apt install fonts-noto-color-emoji`
 - Language Setup:
-  - If you want to write Typescript, you need `npm`
+  - If you want to write TypeScript, you need `npm`
   - If you want to write Golang, you will need `go`
   - etc.
 
@@ -37,7 +37,7 @@ Neovim's configurations are located under the following paths, depending on your
 | :- | :--- |
 | Linux, MacOS | `$XDG_CONFIG_HOME/nvim`, `~/.config/nvim` |
 | Windows (cmd)| `%localappdata%\nvim\` |
-| Windows (powershell)| `$env:LOCALAPPDATA\nvim\` |
+| Windows (PowerShell)| `$env:LOCALAPPDATA\nvim\` |
 
 #### Recommended Step
 

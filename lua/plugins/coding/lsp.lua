@@ -32,9 +32,62 @@ return {
     },
 
     config = function(_, opts)
+      -- Show diagnostic in virtual lines
+      local jump_vlines_group = vim.api.nvim_create_augroup('jumpWithVirtLines', { clear = true })
+      local line_diag_group = vim.api.nvim_create_augroup('line-diagnostics', { clear = true })
+
+      --- Show virtual_lines for current line once and restore on move.
+      ---@param bufnr? integer
+      local function showVirtLineDiagsOnce(bufnr)
+        bufnr = bufnr or 0
+
+        ---@type vim.diagnostic.Opts
+        local cur = vim.diagnostic.config() or {}
+        local restore_virtual_text = cur.virtual_text
+        local restore_virtual_lines = cur.virtual_lines
+
+        vim.diagnostic.config {
+          virtual_text = false,
+          virtual_lines = { current_line = true },
+        }
+        vim.diagnostic.show(nil, bufnr) -- force redraw
+
+        -- Clear any previous "reset" autocmd for this buffer and set a new one
+        vim.api.nvim_clear_autocmds { group = jump_vlines_group, buffer = bufnr }
+        vim.api.nvim_clear_autocmds { group = line_diag_group, buffer = bufnr }
+
+        -- Use one shared reset handler (cursor move resets back)
+        vim.api.nvim_create_autocmd({ 'CursorMoved', 'InsertEnter', 'BufLeave' }, {
+          desc = 'User(once): Reset diagnostics virtual lines',
+          once = true,
+          group = jump_vlines_group, -- single group is enough; buffer-local clear handles repeats
+          buffer = bufnr,
+          callback = function()
+            vim.diagnostic.config {
+              virtual_lines = restore_virtual_lines,
+              virtual_text = restore_virtual_text,
+            }
+            vim.diagnostic.show(nil, bufnr)
+          end,
+        })
+      end
+
+      ---@param jumpCount number
+      ---@param jumpOpts? table
+      local function jumpWithVirtLines(jumpCount, jumpOpts)
+        jumpOpts = jumpOpts or {}
+        jumpOpts.count = jumpCount
+        vim.diagnostic.jump(jumpOpts)
+
+        -- Deferred so the show/reset isn't “eaten” by the jump itself
+        vim.defer_fn(function()
+          showVirtLineDiagsOnce(0)
+        end, 1)
+      end
+
       --  This function gets run when an LSP attaches to a particular buffer.
       --    That is to say, every time a new file is opened that is associated with
-      --    an lsp (for example, opening `main.rs` is associated with `rust_analyzer`) this
+      --    an LSP (for example, opening `main.rs` is associated with `rust_analyzer`) this
       --    function will be executed to configure the current buffer
       vim.api.nvim_create_autocmd('LspAttach', {
         group = vim.api.nvim_create_augroup('kickstart-lsp-attach', { clear = true }),
@@ -49,23 +102,16 @@ return {
             vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
           end
 
-          -- ]d / [d => only WARN+
-          map(']d', function()
-            vim.diagnostic.jump { count = 1, severity = { min = vim.diagnostic.severity.WARN } }
-          end, 'Next Diagnostic (Warn+)')
-
-          map('[d', function()
-            vim.diagnostic.jump { count = -1, severity = { min = vim.diagnostic.severity.WARN } }
-          end, 'Prev Diagnostic (Warn+)')
-
-          -- ]h / [h => only HINT
-          map(']h', function()
-            vim.diagnostic.jump { count = 1, severity = vim.diagnostic.severity.HINT }
-          end, 'Next Hint')
-
-          map('[h', function()
-            vim.diagnostic.jump { count = -1, severity = vim.diagnostic.severity.HINT }
-          end, 'Prev Hint')
+          -- stylua: ignore start
+          -- Jump to WARN+
+          map(']d', function() jumpWithVirtLines(1, { severity = { min = vim.diagnostic.severity.WARN } }) end, 'Next Diagnostic')
+          map('[d', function() jumpWithVirtLines(-1, { severity = { min = vim.diagnostic.severity.WARN } }) end, 'Prev Diagnostic')
+          -- Jump to HINT only
+          map(']h', function() jumpWithVirtLines(1, { severity = vim.diagnostic.severity.HINT }) end, 'Next Hint')
+          map('[h', function() jumpWithVirtLines(-1, { severity = vim.diagnostic.severity.HINT }) end, 'Prev Hint')
+          -- Show diagnostic in virtual lines
+          map('<leader>k', function() showVirtLineDiagsOnce(event.buf) end, 'Line diagnostics (virtual lines)')
+          -- stylua: ignore end
 
           -- This function resolves a difference between Neovim nightly (version 0.11) and stable (version 0.10)
           ---@param client vim.lsp.Client

@@ -11,6 +11,62 @@ return {
         enabled = true,
       },
       picker = {
+        actions = {
+          explorer_paste_rename = function(picker)
+            local Tree = require 'snacks.explorer.tree'
+            local actions = require 'snacks.explorer.actions'
+            local files = vim.split(vim.fn.getreg(vim.v.register or '+') or '', '\n', { plain = true })
+            files = vim.tbl_filter(function(file)
+              return file ~= '' and vim.fn.filereadable(file) == 1
+            end, files)
+
+            if #files == 0 then
+              return Snacks.notify.warn(('The `%s` register does not contain any files'):format(vim.v.register or '+'))
+            elseif #files == 1 then
+              local file = files[1]
+              local base = vim.fn.fnamemodify(file, ':t')
+              local dir = picker:dir()
+              Snacks.input({
+                prompt = 'Rename pasted file',
+                default = base,
+              }, function(value)
+                if not value or value:find '^%s*$' then
+                  return
+                end
+                local uv = vim.uv or vim.loop
+                local target = vim.fs.normalize(dir .. '/' .. value)
+                if uv.fs_stat(target) then
+                  return Snacks.notify.warn('File already exists:\n- `' .. target .. '`')
+                end
+                Snacks.picker.util.copy_path(file, target)
+                Tree:refresh(dir)
+                Tree:open(dir)
+                actions.update(picker, { target = target })
+              end)
+            else
+              local dir = picker:dir()
+              local uv = vim.uv or vim.loop
+              for _, file in ipairs(files) do
+                local base = vim.fn.fnamemodify(file, ':t')
+                local target = vim.fs.normalize(dir .. '/' .. base)
+                local name, ext = base:match '^(.*)%.(.*)$'
+                name = name or base
+                ext = ext and ('.' .. ext) or ''
+
+                local count = 1
+                while uv.fs_stat(target) do
+                  target = vim.fs.normalize(dir .. '/' .. name .. '_' .. count .. ext)
+                  count = count + 1
+                end
+
+                Snacks.picker.util.copy_path(file, target)
+              end
+              Tree:refresh(dir)
+              Tree:open(dir)
+              actions.update(picker, { target = dir })
+            end
+          end,
+        },
         sources = {
           ---@class snacks.picker.explorer.Config: snacks.picker.files.Config|{}
           explorer = {
@@ -54,9 +110,10 @@ return {
                   ['c'] = 'explorer_copy',
                   ['m'] = 'explorer_move',
                   ['o'] = 'explorer_open', -- open with system application
-                  ['P'] = 'toggle_preview',
+                  ['V'] = 'toggle_preview',
                   ['y'] = { 'explorer_yank', mode = { 'n', 'x' } },
                   ['p'] = 'explorer_paste',
+                  ['P'] = 'explorer_paste_rename',
                   ['u'] = 'explorer_update',
                   ['<c-c>'] = 'tcd',
                   ['<leader>/'] = 'picker_grep',

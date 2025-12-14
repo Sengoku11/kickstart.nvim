@@ -32,43 +32,71 @@ return {
     },
 
     config = function(_, opts)
-      -- Show diagnostic in virtual lines
+      -- One-shot virtual-lines helper:
+      -- NOTE: vim.diagnostic.config() is GLOBAL, so the reset autocmd must NOT be buffer-local.
+      -- Otherwise, you can show vlines in one split and then move in another split -> reset never fires -> vlines “stick”.
       local jump_vlines_group = vim.api.nvim_create_augroup('jumpWithVirtLines', { clear = true })
-      local line_diag_group = vim.api.nvim_create_augroup('line-diagnostics', { clear = true })
 
-      --- Show virtual_lines for current line once and restore on move.
+      local vlines_state = {
+        active = false,
+        saved = nil, ---@type {virtual_text:any, virtual_lines:any}|nil
+      }
+
+      local function save_diag_config_once()
+        if vlines_state.active then
+          return
+        end
+        local cur = vim.diagnostic.config() or {}
+        vlines_state.saved = {
+          virtual_text = vim.deepcopy(cur.virtual_text),
+          virtual_lines = vim.deepcopy(cur.virtual_lines),
+        }
+        vlines_state.active = true
+      end
+
+      local function restore_diag_config()
+        if not vlines_state.active or not vlines_state.saved then
+          return
+        end
+        vim.diagnostic.config {
+          virtual_text = vlines_state.saved.virtual_text,
+          virtual_lines = vlines_state.saved.virtual_lines,
+        }
+        vlines_state.active = false
+        vlines_state.saved = nil
+
+        -- force redraw for current buffer (good enough; avoids iterating all buffers)
+        pcall(vim.diagnostic.show, nil, 0)
+      end
+
+      --- Show virtual_lines for current line once and restore on the next “real” interaction anywhere.
       ---@param bufnr? integer
       local function showVirtLineDiagsOnce(bufnr)
         bufnr = bufnr or 0
 
-        ---@type vim.diagnostic.Opts
-        local cur = vim.diagnostic.config() or {}
-        local restore_virtual_text = cur.virtual_text
-        local restore_virtual_lines = cur.virtual_lines
+        save_diag_config_once()
 
         vim.diagnostic.config {
           virtual_text = false,
           virtual_lines = { current_line = true },
         }
-        vim.diagnostic.show(nil, bufnr) -- force redraw
+        pcall(vim.diagnostic.show, nil, bufnr) -- force redraw
 
-        -- Clear any previous "reset" autocmd for this buffer and set a new one
-        vim.api.nvim_clear_autocmds { group = jump_vlines_group, buffer = bufnr }
-        vim.api.nvim_clear_autocmds { group = line_diag_group, buffer = bufnr }
-
-        -- Use one shared reset handler (cursor move resets back)
-        vim.api.nvim_create_autocmd({ 'CursorMoved', 'InsertEnter', 'BufLeave' }, {
+        -- Replace any previous pending reset. Global (not buffer-local) on purpose.
+        vim.api.nvim_clear_autocmds { group = jump_vlines_group }
+        vim.api.nvim_create_autocmd({
+          'CursorMoved',
+          'CursorMovedI',
+          'InsertEnter',
+          'WinLeave',
+          'BufLeave',
+          'CmdlineEnter',
+          'ModeChanged',
+        }, {
           desc = 'User(once): Reset diagnostics virtual lines',
           once = true,
-          group = jump_vlines_group, -- single group is enough; buffer-local clear handles repeats
-          buffer = bufnr,
-          callback = function()
-            vim.diagnostic.config {
-              virtual_lines = restore_virtual_lines,
-              virtual_text = restore_virtual_text,
-            }
-            vim.diagnostic.show(nil, bufnr)
-          end,
+          group = jump_vlines_group,
+          callback = restore_diag_config,
         })
       end
 
@@ -77,7 +105,12 @@ return {
       local function jumpWithVirtLines(jumpCount, jumpOpts)
         jumpOpts = jumpOpts or {}
         jumpOpts.count = jumpCount
-        vim.diagnostic.jump(jumpOpts)
+
+        -- avoid leaving global config toggled if jump errors / nothing to jump to
+        local ok = pcall(vim.diagnostic.jump, jumpOpts)
+        if not ok then
+          return
+        end
 
         -- Deferred so the show/reset isn't “eaten” by the jump itself
         vim.defer_fn(function()

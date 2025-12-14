@@ -5,13 +5,15 @@ return {
     event = 'UIEnter',
 
     init = function()
-      -- operatorfunc needs a globally-addressable function; we hang it off `vim`
+      -- Custom operator for <leader>s{motion} to grep the text covered by that motion
       vim.SnacksGrepOperator = function(optype)
-        -- optype is: "char" | "line" | "block"
-        -- getregion expects a regtype char: "v" | "V" | "\022" (CTRL-V)
-        local regtype = (optype == 'line' and 'V') or (optype == 'block' and '\022') or 'v'
+        if optype == 'block' then
+          return
+        end
 
+        local regtype = (optype == 'line') and 'V' or 'v'
         local lines = vim.fn.getregion(vim.fn.getpos "'[", vim.fn.getpos "']", { type = regtype })
+
         local text = vim.trim(table.concat(lines, ' '))
         if text == '' then
           return
@@ -19,7 +21,7 @@ return {
 
         Snacks.picker.grep {
           search = text,
-          regex = false, -- treat selection literally
+          regex = false,
         }
       end
     end,

@@ -143,16 +143,16 @@ return {
           map(']h', function() jumpWithVirtLines(1, { severity = vim.diagnostic.severity.HINT }) end, 'Next Hint')
           map('[h', function() jumpWithVirtLines(-1, { severity = vim.diagnostic.severity.HINT }) end, 'Prev Hint')
           -- Show diagnostic in virtual lines
-          map('<leader>k', function() showVirtLineDiagsOnce(event.buf) end, 'Line diagnostics (virtual lines)')
+          map('<leader>k', function() showVirtLineDiagsOnce(event.buf) end, 'Show diagnostics lines')
           -- stylua: ignore end
 
           -- Open diagnostic float window with cursor in it.
-          vim.keymap.set('n', '<C-w>d', function()
+          map('<C-w>d', function()
             local _, winid = vim.diagnostic.open_float()
             if winid then
               vim.api.nvim_set_current_win(winid)
             end
-          end, { desc = 'Diagnostics float (open+focus)' })
+          end, 'Open diagnostics window under the cursor')
 
           -- This function resolves a difference between Neovim nightly (version 0.11) and stable (version 0.10)
           ---@param client vim.lsp.Client

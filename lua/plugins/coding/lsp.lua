@@ -146,6 +146,14 @@ return {
           map('<leader>k', function() showVirtLineDiagsOnce(event.buf) end, 'Line diagnostics (virtual lines)')
           -- stylua: ignore end
 
+          -- Open diagnostic float window with cursor in it.
+          vim.keymap.set('n', '<C-w>d', function()
+            local _, winid = vim.diagnostic.open_float()
+            if winid then
+              vim.api.nvim_set_current_win(winid)
+            end
+          end, { desc = 'Diagnostics float (open+focus)' })
+
           -- This function resolves a difference between Neovim nightly (version 0.11) and stable (version 0.10)
           ---@param client vim.lsp.Client
           ---@param method vim.lsp.protocol.Method
@@ -204,7 +212,7 @@ return {
       -- See :help vim.diagnostic.Opts
       vim.diagnostic.config {
         severity_sort = true,
-        float = { border = 'rounded', source = 'if_many' },
+        float = { scope = 'line', border = 'rounded', source = 'if_many' },
         underline = { severity = vim.diagnostic.severity.ERROR },
         signs = vim.g.have_nerd_font and {
           text = {

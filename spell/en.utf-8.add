@@ -19,6 +19,7 @@ DvD
 DvP
 EVM
 Elasticsearch
+Esc
 Gitlab
 GmbH
 Golang
@@ -27,6 +28,7 @@ IaaS
 JSON
 JSX
 KPI
+Kickstart
 Kubernetes
 LLC
 LSP
@@ -35,6 +37,8 @@ MEV
 MongoDB
 MySQL
 Neovim
+Neovim's
+PERF
 PaaS
 PostgreSQL
 Postgres
@@ -81,6 +85,7 @@ bluegreendeploy
 bool
 boolean
 borrowchecker
+browsable
 buf
 calldata
 cfg
@@ -90,6 +95,7 @@ cid
 cids
 cjs
 cmake
+cmd
 cmp
 conf
 config
@@ -114,6 +120,7 @@ denormalized
 desc
 dev
 devnet
+dir
 dockerfile
 dotenv
 dotenvs
@@ -140,6 +147,7 @@ featureflags
 fifo
 filesystem
 filetype
+filetypes
 fintech
 fixme
 flashbots
@@ -148,6 +156,8 @@ fn
 fnv
 forcepush
 forgefmt
+formatter
+formatters
 foundryup
 frontend
 fs
@@ -162,6 +172,8 @@ gid
 gif
 gitattributes
 gitblame
+gitcommit
+github
 gitignore
 gitkraken
 gitlens
@@ -175,6 +187,7 @@ grafanacloud
 grpc
 grpcurl
 guid
+haskell
 hdr
 helmchart
 helmcharts
@@ -205,6 +218,7 @@ isize
 iter
 ixx
 jaeger
+javascript
 jetbrains
 journald
 jpeg
@@ -223,6 +237,7 @@ keybindings
 keymap
 keymaps
 kibana
+kickstart
 kubeadm
 kubectl
 kubelet
@@ -230,6 +245,7 @@ kubernetes
 kustomize
 kv
 kvp
+lang
 latencies
 lazydocker
 lazygit
@@ -239,6 +255,7 @@ lifecycle
 lifecycling
 lifetimes
 lifo
+linters
 lldb
 loadbalancer
 loadbalancers
@@ -247,6 +264,7 @@ localstack
 lockfile
 logstash
 lru
+lsp
 lspconfig
 lua
 mainnet
@@ -307,6 +325,7 @@ pkts
 png
 pnpm
 podman
+preconfigured
 prettier
 prev
 privkey
@@ -338,6 +357,7 @@ repo
 repos
 req
 requestor
+resizing
 ret
 retryable
 revparse
@@ -396,6 +416,7 @@ tmux
 todo
 toml
 traceability
+trackpad
 treesitter
 trpc
 ts
@@ -411,8 +432,10 @@ txt
 typeorm
 uid
 uintptr
+uncomment
 uncommitted
 undisclose
+unicode
 unintuitive
 uniswap
 unixms
@@ -445,6 +468,8 @@ webpack
 websocket
 websockets
 wezterm
+whitelist
+whitespace
 wireguard
 woff
 woff2

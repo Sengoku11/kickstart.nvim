@@ -3,6 +3,27 @@ return {
   {
     'folke/snacks.nvim',
     event = 'UIEnter',
+
+    init = function()
+      -- operatorfunc needs a globally-addressable function; we hang it off `vim`
+      vim.SnacksGrepOperator = function(optype)
+        -- optype is: "char" | "line" | "block"
+        -- getregion expects a regtype char: "v" | "V" | "\022" (CTRL-V)
+        local regtype = (optype == 'line' and 'V') or (optype == 'block' and '\022') or 'v'
+
+        local lines = vim.fn.getregion(vim.fn.getpos "'[", vim.fn.getpos "']", { type = regtype })
+        local text = vim.trim(table.concat(lines, ' '))
+        if text == '' then
+          return
+        end
+
+        Snacks.picker.grep {
+          search = text,
+          regex = false, -- treat selection literally
+        }
+      end
+    end,
+
     opts = {
       picker = {
         win = {
@@ -55,6 +76,7 @@ return {
         },
       },
     },
+
     -- stylua: ignore
     keys = {
       -- Top Pickers & Explorer
@@ -65,6 +87,7 @@ return {
       { "<leader>n", function() Snacks.picker.notifications() end, desc = "Notification History" },
       { "<leader>e", function() Snacks.explorer() end, desc = "File Explorer" },
       { "\\", function() Snacks.explorer() end, desc = "File Explorer" },
+
       -- find
       { "<leader>fb", function() Snacks.picker.buffers() end, desc = "Buffers" },
       { "<leader>fc", function() Snacks.picker.files({ cwd = vim.fn.stdpath("config") }) end, desc = "Find Config File" },
@@ -72,6 +95,7 @@ return {
       { "<leader>fg", function() Snacks.picker.git_files() end, desc = "Find Git Files" },
       { "<leader>fp", function() Snacks.picker.projects() end, desc = "Projects" },
       { "<leader>fr", function() Snacks.picker.recent() end, desc = "Recent" },
+
       -- git
       { "<leader>gb", function() Snacks.picker.git_branches() end, desc = "Git Branches" },
       { "<leader>gl", function() Snacks.picker.git_log() end, desc = "Git Log" },
@@ -80,23 +104,25 @@ return {
       { "<leader>gS", function() Snacks.picker.git_stash() end, desc = "Git Stash" },
       { "<leader>gD", function() Snacks.picker.git_diff() end, desc = "Git Diff (Hunks)" },
       { "<leader>gf", function() Snacks.picker.git_log_file() end, desc = "Git Log File" },
+
       -- Grep
       { "<leader>sb", function() Snacks.picker.lines() end, desc = "Buffer Lines" },
       { "<leader>sB", function() Snacks.picker.grep_buffers() end, desc = "Grep Open Buffers" },
-      { "<leader>sg", function() Snacks.picker.grep() end, desc = "Grep" },
       { "<leader>sw", function() Snacks.picker.grep_word() end, desc = "Visual selection or word", mode = { "n", "x" } },
+      -- operator-pending grep by motion, e.g. <leader>siw, <leader>sab, <leader>sip
+      { "<leader>s", function() vim.go.operatorfunc = "v:lua.vim.SnacksGrepOperator" return "g@" end, expr = true, desc = "Grep by motion" },
+
       -- search
       { '<leader>s"', function() Snacks.picker.registers() end, desc = "Registers" },
       { '<leader>s/', function() Snacks.picker.search_history() end, desc = "Search History" },
-      { "<leader>sa", function() Snacks.picker.autocmds() end, desc = "Autocmds" },
-      { "<leader>sb", function() Snacks.picker.lines() end, desc = "Buffer Lines" },
+      { "<leader>sA", function() Snacks.picker.autocmds() end, desc = "Autocmds" },
       { "<leader>sc", function() Snacks.picker.command_history() end, desc = "Command History" },
       { "<leader>sC", function() Snacks.picker.commands() end, desc = "Commands" },
       { "<leader>sd", function() Snacks.picker.diagnostics() end, desc = "Diagnostics" },
       { "<leader>sD", function() Snacks.picker.diagnostics_buffer() end, desc = "Buffer Diagnostics" },
       { "<leader>sh", function() Snacks.picker.help() end, desc = "Help Pages" },
       { "<leader>sH", function() Snacks.picker.highlights() end, desc = "Highlights" },
-      { "<leader>si", function() Snacks.picker.icons() end, desc = "Icons" },
+      { "<leader>sI", function() Snacks.picker.icons() end, desc = "Icons" },
       { "<leader>sj", function() Snacks.picker.jumps() end, desc = "Jumps" },
       { "<leader>sk", function() Snacks.picker.keymaps() end, desc = "Keymaps" },
       { "<leader>sl", function() Snacks.picker.loclist() end, desc = "Location List" },
@@ -108,6 +134,7 @@ return {
       { "<leader>s.", function() Snacks.picker.resume() end, desc = "Repeat" },
       { "<leader>su", function() Snacks.picker.undo() end, desc = "Undo History" },
       { "<leader>uc", function() Snacks.picker.colorschemes() end, desc = "Colorschemes" },
+
       -- LSP
       { "gd", function() Snacks.picker.lsp_definitions() end, desc = "Goto Definition" },
       { "gD", function() Snacks.picker.lsp_declarations() end, desc = "Goto Declaration" },
@@ -120,6 +147,7 @@ return {
       { "<leader>sS", function() Snacks.picker.lsp_workspace_symbols() end, desc = "LSP Workspace Symbols" },
     },
   },
+
   {
     'folke/todo-comments.nvim',
     optional = true,
@@ -129,6 +157,7 @@ return {
       { "<leader>sT", function () Snacks.picker.todo_comments({ keywords = { "TODO", "FIX", "FIXME" } }) end, desc = "Todo/Fix/Fixme" },
     },
   },
+
   {
     'folke/snacks.nvim',
     opts = function(_, opts)
@@ -140,6 +169,7 @@ return {
       })
     end,
   },
+
   {
     'folke/flash.nvim',
     optional = true,

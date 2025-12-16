@@ -4,6 +4,35 @@ return {
     opts = {
       servers = {
         harper_ls = {
+          filetypes = {
+            'asciidoc',
+            'c',
+            'cpp',
+            'cs',
+            'daml',
+            'gitcommit',
+            'go',
+            'html',
+            'java',
+            'javascript',
+            'lua',
+            'markdown',
+            'nix',
+            'python',
+            'ruby',
+            'rust',
+            'swift',
+            'toml',
+            'typescript',
+            'typescriptreact',
+            'haskell',
+            'cmake',
+            'typst',
+            'php',
+            'dart',
+            'clojure',
+            'sh',
+          },
           settings = {
             ['harper-ls'] = {
               userDictPath = '',

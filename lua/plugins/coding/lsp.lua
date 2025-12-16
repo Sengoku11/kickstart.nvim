@@ -221,7 +221,7 @@ return {
           },
         },
         signs = {
-          severity = { min = vim.diagnostic.severity.WARN }, -- no sign column noise from hints
+          severity = { min = vim.diagnostic.severity.INFO }, -- no sign column noise from hints
           text = {
             [vim.diagnostic.severity.ERROR] = BA.config.icons.diagnostics.Error,
             [vim.diagnostic.severity.WARN] = BA.config.icons.diagnostics.Warn,

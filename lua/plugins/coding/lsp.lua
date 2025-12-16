@@ -140,8 +140,8 @@ return {
           map(']d', function() jumpWithVirtLines(1, { severity = { min = vim.diagnostic.severity.WARN } }) end, 'Next Diagnostic')
           map('[d', function() jumpWithVirtLines(-1, { severity = { min = vim.diagnostic.severity.WARN } }) end, 'Prev Diagnostic')
           -- Jump to INFO/HINT 
-          map(']h', function() jumpWithVirtLines(1, { severity = { max = vim.diagnostic.severity.HINT } }) end, 'Next Hint')
-          map('[h', function() jumpWithVirtLines(-1, { severity = { max = vim.diagnostic.severity.HINT } }) end, 'Prev Hint')
+          map(']h', function() jumpWithVirtLines(1, { severity = { max = vim.diagnostic.severity.INFO } }) end, 'Next Hint')
+          map('[h', function() jumpWithVirtLines(-1, { severity = { max = vim.diagnostic.severity.INFO } }) end, 'Prev Hint')
           -- Show diagnostic in virtual lines
           map('<leader>k', function() showVirtLineDiagsOnce(event.buf) end, 'Show diagnostics lines')
           -- stylua: ignore end

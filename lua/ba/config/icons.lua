@@ -5,6 +5,9 @@ local function I(nerd, ascii)
   return (vim.g.have_nerd_font and nerd) or ascii
 end
 
+-- BUG: don't use following icons: 𖦥, 𝒾
+-- for some reason they break statusline with UI.
+
 -- icons used by other plugins
 -- stylua: ignore
 return {
@@ -12,13 +15,13 @@ return {
     dots = I('󰇘', '…'),
   },
   todo = {
-    fix  = I(' ', '🚩'),
-    todo = I(' ', '✔ '),
-    hack = I(' ', 'ঌ '),
-    warn = I(' ', '⚠️'),
-    perf = I(' ', '⏱ '),
-    note = I(' ', 'ⓘ '),
-    test = I('⏲ ', '⏲ '),
+    fix  = I(' ', ' ⚑'), -- 🚩
+    todo = I(' ', ' ✔'),
+    hack = I(' ', ' ঌ'),
+    warn = I(' ', ' ●'), -- ⚠️
+    perf = I(' ', ' ⏱'),
+    note = I(' ', ' ℹ'), -- ⓘ 
+    test = I('⏲ ', ' ⏲'),
   },
   bufferline = {
     buffer_close_icon  = I('󰅖', 'x'),
@@ -28,28 +31,28 @@ return {
     right_trunc_marker = I(' ', '→'),
   },
   diagnostics = {
-    Error = I(' ', '❗'), -- '󰅚 ', ' '
-    Warn  = I(' ', '▲ '), -- '󰀪 ', ' ', '▼'
-    Hint  = I(' ', '𝒾 '), -- '󰌶 ', ' '
-    Info  = I(' ', 'ⓘ '), -- '󰋽 ', ' '
+    Error = I(' ', ' ✘'), -- 󰅚 ,  
+    Warn  = I(' ', ' ▲'), -- 󰀪 ,  , ▼
+    Hint  = I(' ', ' ⬩'), -- 󰌶 ,   
+    Info  = I(' ', ' ⚑'), -- 󰋽 ,  , 
   },
   notifier = {
     error = I(' ', '✖'),
     warn  = I(' ', '▲'),
-    info  = I(' ', '𝒾'),
+    info  = I(' ', '⚑'),
     debug = I(' ', '●'),
     trace = I(' ', '⟳'),
   },
   dashboard = {
-    find     = I(' ', '●'), -- '🔍'),
-    new_file = I(' ', '●'), -- '📄'),
-    grep     = I(' ', '●'), -- '📖'),
-    projects = I(' ', '●'), -- '📂'),
-    recent   = I(' ', '●'), -- '📑'),
-    config   = I(' ', '●'), -- '⚙️'),
-    restore  = I(' ', '●'), -- '↪️'),
-    lazy     = I('󰒲 ', '●'), -- '𝗓ᶻ'),
-    quit     = I(' ', '●'), -- '🚪'),
+    find     = I(' ', '●'), -- 🔍
+    new_file = I(' ', '●'), -- 📄
+    grep     = I(' ', '●'), -- 📖
+    projects = I(' ', '●'), -- 📂
+    recent   = I(' ', '●'), -- 📑
+    config   = I(' ', '●'), -- ⚙️
+    restore  = I(' ', '●'), -- ↪️
+    lazy     = I('󰒲 ', '●'), -- 𝗓ᶻ
+    quit     = I(' ', '●'), -- 🚪
   },
   git = {
     added     = I(' ', '+'),
@@ -62,7 +65,7 @@ return {
     unstaged  = I('󰄱', '☐'),
     staged    = I('', '☑'),
     conflict  = I('', '☒'),
-    branch    = I('', ''), -- don't use 𖦥 for replacement, breaks statusline lol
+    branch    = I('', ''),
     github    = I('', 'GH'),
   },
   lualine = {

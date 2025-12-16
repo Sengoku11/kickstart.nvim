@@ -1,7 +1,7 @@
--- If you're wondering about lsp vs treesitter, see:
+-- If you're wondering about LSP vs treesitter, see:
 --  `:help lsp-vs-treesitter`
 return {
-  { -- configures Lua LSP for your Neovim config, runtime and plugins
+  { -- configures Lua LSP for your Neovim config, runtime, and plugins
     'folke/lazydev.nvim',
     ft = 'lua',
     opts = {
@@ -129,7 +129,7 @@ return {
           -- to define small helper and utility functions so you don't have to repeat yourself.
           --
           -- In this case, we create a function that lets us more easily define mappings specific
-          -- for LSP related items. It sets the mode, buffer and description for us each time.
+          -- for LSP related items. It sets the mode, buffer, and description for us each time.
           local map = function(keys, func, desc, mode)
             mode = mode or 'n'
             vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
@@ -225,8 +225,8 @@ return {
           text = {
             [vim.diagnostic.severity.ERROR] = BA.config.icons.diagnostics.Error,
             [vim.diagnostic.severity.WARN] = BA.config.icons.diagnostics.Warn,
-            [vim.diagnostic.severity.HINT] = BA.config.icons.diagnostics.Hint,
             [vim.diagnostic.severity.INFO] = BA.config.icons.diagnostics.Info,
+            [vim.diagnostic.severity.HINT] = BA.config.icons.diagnostics.Hint,
           },
         } or {},
         virtual_text = {

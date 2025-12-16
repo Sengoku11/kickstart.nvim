@@ -118,27 +118,6 @@ return {
         end, 1)
       end
 
-      ---------------------------------------------------------------------------
-      -- Underline behavior:
-      -- Keep WARN as-is (no underline), but underline HINT + ERROR.
-      -- (Neovim only supports a single underline severity filter, so we filter here.)
-      ---------------------------------------------------------------------------
-      do
-        local orig = vim.diagnostic.handlers.underline
-        vim.diagnostic.handlers.underline = {
-          show = function(ns, bufnr, diagnostics, opts2)
-            local filtered = {}
-            for _, d in ipairs(diagnostics) do
-              if d.severity == vim.diagnostic.severity.ERROR or d.severity == vim.diagnostic.severity.HINT then
-                filtered[#filtered + 1] = d
-              end
-            end
-            return orig.show(ns, bufnr, filtered, opts2)
-          end,
-          hide = orig.hide,
-        }
-      end
-
       --  This function gets run when an LSP attaches to a particular buffer.
       --    That is to say, every time a new file is opened that is associated with
       --    an LSP (for example, opening `main.rs` is associated with `rust_analyzer`) this
@@ -234,6 +213,13 @@ return {
       vim.diagnostic.config {
         severity_sort = true,
         float = { scope = 'line', border = 'rounded', source = 'if_many' },
+        underline = {
+          severity = {
+            vim.diagnostic.severity.ERROR,
+            vim.diagnostic.severity.INFO,
+            vim.diagnostic.severity.HINT,
+          },
+        },
         signs = {
           severity = { min = vim.diagnostic.severity.WARN }, -- no sign column noise from hints
           text = {

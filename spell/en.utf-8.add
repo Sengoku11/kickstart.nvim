@@ -53,6 +53,7 @@ Serde
 TSX
 Terraform
 Tokio
+UI
 Vite
 YAML
 actix
@@ -187,6 +188,7 @@ grafanacloud
 grpc
 grpcurl
 guid
+harper
 haskell
 hdr
 helmchart
@@ -326,6 +328,7 @@ png
 pnpm
 podman
 preconfigured
+premade
 prettier
 prev
 privkey

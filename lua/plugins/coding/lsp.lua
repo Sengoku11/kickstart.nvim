@@ -143,7 +143,7 @@ return {
           map(']h', function() jumpWithVirtLines(1, { severity = { max = vim.diagnostic.severity.INFO } }) end, 'Next Hint')
           map('[h', function() jumpWithVirtLines(-1, { severity = { max = vim.diagnostic.severity.INFO } }) end, 'Prev Hint')
           -- Show diagnostic in virtual lines
-          map('<leader>k', function() showVirtLineDiagsOnce(event.buf) end, 'Show diagnostics lines')
+          map('<leader>k', function() showVirtLineDiagsOnce(event.buf) end, 'Show Diagnostics')
           -- stylua: ignore end
 
           -- Open diagnostic float window with cursor in it.

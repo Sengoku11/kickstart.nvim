@@ -109,6 +109,7 @@ require 'ba.autocommands'
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
 vim.keymap.set('n', '<C-s>', ':w<CR>', { desc = 'Save buffer', silent = true })
+vim.keymap.set('n', '<leader>qa', ':wqa<CR>', { desc = 'Save all and quit', silent = true })
 vim.keymap.set('n', '<leader>qf', vim.diagnostic.setloclist, { desc = 'Open Quickfix List' })
 vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit Terminal Mode' })
 

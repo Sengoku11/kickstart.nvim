@@ -24,6 +24,7 @@ Gitlab
 GmbH
 Golang
 Grafana
+IPsec
 IaaS
 JSON
 JSX
@@ -34,6 +35,7 @@ LLC
 LSP
 Ltd
 MEV
+MTU
 MongoDB
 MySQL
 Neovim
@@ -50,9 +52,11 @@ SPDX
 SRE
 SaaS
 Serde
+TLS
 TSX
 Terraform
 Tokio
+UDP
 UI
 Vite
 YAML
@@ -195,6 +199,7 @@ helmchart
 helmcharts
 helmfile
 hh
+hjkl
 hmac
 hotfix
 hotfixed

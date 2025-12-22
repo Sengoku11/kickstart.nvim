@@ -13,7 +13,7 @@ return {
       }
 
       vim.keymap.set({ 'n', 'x' }, '<leader>sr', function()
-        require('grug-far').open { visualSelectionUsage = 'operate-within-range' }
+        require('grug-far').open { visualSelectionUsage = 'operate-within-range', prefills = { search = vim.fn.expand '<cword>' } }
       end, { desc = 'grug-far: Search within range' })
     end,
   },

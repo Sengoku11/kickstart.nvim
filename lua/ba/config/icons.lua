@@ -33,8 +33,20 @@ return {
   diagnostics = {
     Error = I(' ', ' ✘'), -- 󰅚 ,  
     Warn  = I(' ', ' ▲'), -- 󰀪 ,  , ▼
-    Hint  = I(' ', ' ⬩'), -- 󰌶 ,   
+    Hint  = I(' ', ' ♦'), -- 󰌶 ,   ⬩
     Info  = I(' ', ' ⚑'), -- 󰋽 ,  , 
+  },
+  statusline_diagnostics = {
+    Error = I(' ', '✘ '),
+    Warn  = I(' ', '▲ '),
+    Hint  = I(' ', '♦ '), -- ♦
+    Info  = I(' ', '⚑ '),
+  },
+  explorer_diagnostics = {
+    Error = I(' ', '✘ '),
+    Warn  = I(' ', '▲ '),
+    Hint  = I(' ', '♦ '), -- ♦
+    Info  = I(' ', '⚑ '),
   },
   notifier = {
     error = I(' ', '✖'),

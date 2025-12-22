@@ -52,10 +52,10 @@ return {
             {
               'diagnostics',
               symbols = {
-                error = BA.config.icons.diagnostics.Error,
-                warn = BA.config.icons.diagnostics.Warn,
-                info = BA.config.icons.diagnostics.Info,
-                hint = BA.config.icons.diagnostics.Hint,
+                error = BA.config.icons.statusline_diagnostics.Error,
+                warn = BA.config.icons.statusline_diagnostics.Warn,
+                info = BA.config.icons.statusline_diagnostics.Info,
+                hint = BA.config.icons.statusline_diagnostics.Hint,
               },
             },
             { 'filename', path = 1 },

@@ -61,7 +61,7 @@ return {
             selected = '● ',
             unselected = '○ ',
           },
-          diagnostics = BA.config.icons.diagnostics,
+          diagnostics = BA.config.icons.explorer_diagnostics,
         },
         ---@class snacks.picker.previewers.Config
         previewers = {

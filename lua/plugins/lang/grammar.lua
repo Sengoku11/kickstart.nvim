@@ -39,6 +39,7 @@ return {
                 Matcher = true,
                 CorrectNumberSuffix = true,
                 SplitWords = false,
+                OrthographicConsistency = false,
               },
               codeActions = { ForceStable = false },
               markdown = { IgnoreLinkTitle = false },

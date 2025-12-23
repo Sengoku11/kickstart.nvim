@@ -2,14 +2,43 @@ return {
   {
     'MagicDuck/grug-far.nvim',
     event = 'VeryLazy',
-    -- Note (lazy loading): grug-far.lua defers all it's requires so it's lazy by default
-    -- additional lazy config to defer loading is not really needed...
     config = function()
       -- optional setup call to override plugin options
       -- alternatively you can set options with vim.g.grug_far = { ... }
       require('grug-far').setup {
-        -- options, see Configuration section below
-        -- there are no required options atm
+        -- h: grug-far-opts
+        icons = {
+          -- whether to show icons
+          enabled = vim.g.have_nerd_font,
+
+          -- provider to use for file icons
+          -- acceptable values: 'first_available', 'nvim-web-devicons', 'mini.icons', false (to disable)
+          fileIconsProvider = 'first_available',
+
+          actionEntryBullet = ' ',
+
+          searchInput = ' ',
+          replaceInput = ' ',
+          filesFilterInput = 'f', -- ' ',
+          flagsInput = '󰮚 ',
+          pathsInput = ' ',
+
+          resultsStatusReady = '󱩾 ',
+          resultsStatusError = ' ',
+          resultsStatusSuccess = '󰗡 ',
+          resultsActionMessage = '  ',
+          resultsEngineLeft = '⟪',
+          resultsEngineRight = '⟫',
+          resultsChangeIndicator = '┃',
+          resultsAddedIndicator = '▒',
+          resultsRemovedIndicator = '▒',
+          resultsDiffSeparatorIndicator = '┊',
+          historyTitle = '   ',
+          helpTitle = ' 󰘥  ',
+          lineNumbersEllipsis = ' ',
+
+          newline = ' ',
+        },
       }
 
       vim.keymap.set({ 'n', 'x' }, '<leader>sr', function()

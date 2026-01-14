@@ -8,7 +8,7 @@ return {
     },
     config = function()
       -- Optional keymaps
-      vim.keymap.set('n', '<leader>gg', ':Git<CR>', { desc = 'Git Fugitive' })
+      vim.keymap.set('n', '<leader>gg', ':Git<CR>', { desc = 'Git Fugitive', silent = true })
       vim.keymap.set('n', '<leader>gp', ':GBrowse<CR>', { desc = 'Open Git Page in Browser' })
     end,
   },

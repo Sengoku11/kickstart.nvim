@@ -174,6 +174,9 @@ function M.open()
   local Popup = require 'nui.popup'
   local Layout = require 'nui.layout'
 
+  -- remember where user was, so closing returns there (not "first window")
+  local prev_win = vim.api.nvim_get_current_win()
+
   local draft_path, root = draft_path_for_worktree()
   if not draft_path or not root then
     notify('Not inside a git worktree.', vim.log.levels.ERROR)
@@ -241,6 +244,12 @@ function M.open()
     }, { dir = 'col' })
   )
 
+  local function restore_prev_window()
+    if prev_win and vim.api.nvim_win_is_valid(prev_win) then
+      pcall(vim.api.nvim_set_current_win, prev_win)
+    end
+  end
+
   local function close()
     layout:unmount()
 
@@ -254,6 +263,9 @@ function M.open()
     if created_desc_buf and vim.api.nvim_buf_is_valid(desc_buf) then
       pcall(vim.api.nvim_buf_delete, desc_buf, { force = true })
     end
+
+    -- jump back to where user was
+    restore_prev_window()
   end
 
   local function focus_title()

@@ -1,4 +1,3 @@
--- lua/ba/plugins/commitmsg/ui.lua
 local M = {}
 
 local function trim(s)
@@ -205,20 +204,20 @@ function M.open()
   vim.bo[desc_buf].filetype = 'markdown'
 
   local title_popup = Popup {
-    border = { style = 'rounded', text = { top = ' Title (first -m) ', top_align = 'left' } },
+    border = { style = 'rounded', text = { top = ' Title', top_align = 'left' } },
     enter = true,
     focusable = true,
     bufnr = title_buf,
   }
 
   local desc_popup = Popup {
-    border = { style = 'rounded', text = { top = ' Body (second -m) ', top_align = 'left' } },
+    border = { style = 'rounded', text = { top = ' Body', top_align = 'left' } },
     enter = false,
     focusable = true,
     bufnr = desc_buf,
   }
 
-  -- Make title “single-line” (FIX: gsub returns 2 values; wrap in parens)
+  -- Make title “single-line”
   vim.api.nvim_create_autocmd('TextChangedI', {
     buffer = title_buf,
     callback = function()
@@ -336,7 +335,7 @@ function M.open()
     end
   end
 
-  title_popup.border:set_text('bottom', '  Tab switch  Ctrl+S draft  Ctrl+Enter commit  Ctrl+L clear  q/Esc close  ', 'center')
+  title_popup.border:set_text('bottom', '  [Tab] switch  [Ctrl+S] draft  [Ctrl+Enter] commit  [Ctrl+L] clear  [q/Esc] close  ', 'center')
 
   local function map(buf, modes, lhs, rhs, desc)
     vim.keymap.set(modes, lhs, rhs, { buffer = buf, silent = true, nowait = true, desc = desc })

@@ -228,6 +228,7 @@ function M.open()
 
   local layout = Layout(
     {
+      relative = 'editor',
       position = '50%',
       size = {
         width = math.max(60, math.floor(vim.o.columns * 0.70)),

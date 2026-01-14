@@ -170,6 +170,21 @@ local function bufnr_by_name(name)
   return nil
 end
 
+local function extract_commit_hash(stdout, stderr)
+  local s = (stdout or '') .. '\n' .. (stderr or '')
+  -- Common output contains: "[branch abcdef1] message"
+  local h = s:match '%[.-%s+([0-9a-fA-F]+)%]'
+  if h and #h >= 7 then
+    return h
+  end
+  -- Fallback: look for a 7...40 hex token
+  h = s:match '(%f[%x][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]+%f[^%x])'
+  if h and #h >= 7 then
+    return h
+  end
+  return nil
+end
+
 function M.open()
   local Popup = require 'nui.popup'
   local Layout = require 'nui.layout'
@@ -321,8 +336,23 @@ function M.open()
     local _, res = git_out(args, root)
     if res and res.code == 0 then
       delete_file(draft_path)
+
+      -- best-effort: confirm hash (works even if git output parsing fails)
+      local hash = extract_commit_hash(res.stdout, res.stderr)
+      if not hash then
+        local h2 = git_out({ 'git', 'rev-parse', '--short', 'HEAD' }, root)
+        if h2 and h2 ~= '' then
+          hash = h2
+        end
+      end
+
       close()
-      notify 'Committed.'
+
+      if hash then
+        notify(string.format('Committed `%s`: %s', hash, title))
+      else
+        notify(string.format('Committed: %s', title))
+      end
     else
       local err = (res and res.stderr and trim(res.stderr) ~= '' and res.stderr) or 'Commit failed.'
       notify(err, vim.log.levels.ERROR)

@@ -25,6 +25,16 @@ return {
     },
   },
 
+  {
+    'Sengoku11/commitpad.nvim',
+    dependencies = { 'MunifTanjim/nui.nvim' },
+    cmd = { 'CommitPad' },
+    keys = {
+      { '<leader>gc', '<cmd>CommitPad<cr>', desc = 'CommitPad' },
+    },
+    opts = {},
+  },
+
   -- Adds git related signs to the gutter, as well as utilities for managing changes
   {
     'lewis6991/gitsigns.nvim',

@@ -58,6 +58,7 @@ Terraform
 Tokio
 UDP
 UI
+VPN
 Vite
 YAML
 actix
@@ -70,6 +71,7 @@ async
 asyncstd
 auth
 autocommands
+autocompletion
 autoload
 autoscale
 autoscaled
@@ -83,6 +85,7 @@ bazel
 bip32
 bip39
 bip44
+bitset
 blockchain
 blockchains
 bluegreen
@@ -104,6 +107,7 @@ cmd
 cmp
 conf
 config
+configs
 conftest
 containerd
 counterparty
@@ -332,6 +336,7 @@ pkts
 png
 pnpm
 podman
+popup
 preconfigured
 premade
 prettier
@@ -481,6 +486,8 @@ whitespace
 wireguard
 woff
 woff2
+workspace
+worktree 
 wrk
 ws
 wss

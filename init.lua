@@ -53,6 +53,11 @@ vim.o.timeoutlen = 300 -- Decrease mapped sequence wait time
 vim.o.undofile = true -- Save undo history
 vim.o.updatetime = 250 -- Decrease update time
 
+-- Soft wrap lines at word boundaries, preserving indentation
+vim.o.wrap = true -- Enable soft wrap (required for the options below)
+vim.o.breakindent = true -- Visual indentation matches the code level
+vim.o.linebreak = true -- Wrap at words, not arbitrary characters
+
 -- Disable vertical / horizontal scroll by mouse and trackpad.
 vim.o.mousescroll = 'ver:3,hor:0'
 

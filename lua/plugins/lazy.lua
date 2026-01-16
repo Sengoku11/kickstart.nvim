@@ -10,6 +10,9 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
+-- Lazy UI
+vim.keymap.set('n', '<leader>lz', '<cmd>Lazy<cr>', { desc = 'Lazy: open UI' })
+
 -- [[ Install plugins ]]
 require('lazy').setup {
   spec = {

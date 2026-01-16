@@ -39,7 +39,6 @@ vim.g.ai_cmp = true
 --  `:help option-list`
 --  `:help lua-options`
 --  `:help lua-options-guide`
-vim.o.breakindent = true -- Enable break indent
 vim.o.confirm = true -- raise a dialog if performing and operation that would fail (like `:q`)
 vim.o.cursorline = true -- Show which line your cursor is on
 vim.o.inccommand = 'split' -- Preview substitutions live, as you type!

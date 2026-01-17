@@ -27,7 +27,7 @@ return {
 
   {
     'Sengoku11/commitpad.nvim',
-    branch = 'dev',
+    branch = 'main',
     dependencies = { 'MunifTanjim/nui.nvim' },
     cmd = { 'CommitPad' },
     keys = {

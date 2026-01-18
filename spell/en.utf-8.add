@@ -73,6 +73,7 @@ auth
 autocommands
 autocompletion
 autoload
+autosave
 autoscale
 autoscaled
 autoscaling
@@ -226,6 +227,7 @@ io
 ipfs
 iptables
 isize
+isn
 iter
 ixx
 jaeger
@@ -266,6 +268,7 @@ lifecycle
 lifecycling
 lifetimes
 lifo
+linter
 linters
 lldb
 loadbalancer
@@ -290,10 +293,12 @@ metamask
 microservice
 microservices
 minikube
+mistyped
 mjs
 mk
 msg
 msgs
+multiline
 multithreaded
 multithreading
 mutex
@@ -409,6 +414,7 @@ str
 struct
 structs
 stylua
+substring
 superjson
 svc
 svg

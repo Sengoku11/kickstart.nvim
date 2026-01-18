@@ -40,6 +40,7 @@ return {
                 CorrectNumberSuffix = true,
                 SplitWords = false,
                 OrthographicConsistency = false,
+                NeedToNoun = false,
               },
               codeActions = { ForceStable = false },
               markdown = { IgnoreLinkTitle = false },

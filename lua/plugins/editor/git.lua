@@ -32,6 +32,11 @@ return {
     cmd = { 'CommitPad' },
     keys = {
       { '<leader>gc', '<cmd>CommitPad<cr>', desc = 'CommitPad' },
+      { '<leader>gac', '<cmd>CommitPadAmend<cr>', desc = 'CommitPadAmend' },
+    },
+    opts = {
+      footer = true,
+      stage_files = true, -- Display staged files in UI
     },
     opts = {},
   },

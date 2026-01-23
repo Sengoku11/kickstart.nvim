@@ -38,7 +38,6 @@ return {
       footer = true,
       stage_files = true, -- Display staged files in UI
     },
-    opts = {},
   },
 
   -- Adds git related signs to the gutter, as well as utilities for managing changes

@@ -93,6 +93,7 @@ bluegreen
 bluegreendeploy
 bool
 boolean
+borderless
 borrowchecker
 browsable
 buf
@@ -103,6 +104,7 @@ cfgs
 cid
 cids
 cjs
+cleanup
 cmake
 cmd
 cmp
@@ -155,6 +157,8 @@ fd
 featureflag
 featureflags
 fifo
+filename
+filenames
 filesystem
 filetype
 filetypes
@@ -164,6 +168,7 @@ flashbots
 fmt
 fn
 fnv
+focusable
 forcepush
 forgefmt
 formatter
@@ -296,6 +301,7 @@ minikube
 mistyped
 mjs
 mk
+modularize
 msg
 msgs
 multiline
@@ -305,6 +311,7 @@ mutex
 mutexes
 namespace
 namespaced
+namespaces
 netcat
 ngrok
 nixpkgs
@@ -327,6 +334,7 @@ openapi
 opentelemetry
 otel
 otf
+param
 pdf
 pgcli
 pgdump
@@ -371,6 +379,8 @@ rebased
 rebasing
 rediscli
 redpanda
+regexes
+renderer
 repo
 repos
 req
@@ -410,10 +420,14 @@ stablecoin
 stablecoins
 starship
 statuscolumn
+stderr
+stdout
 str
+string
 struct
 structs
 stylua
+submodules
 substring
 superjson
 svc
@@ -458,8 +472,10 @@ unicode
 unintuitive
 uniswap
 unixms
+unstaged
 unstash
 unstashed
+untracked
 upcast
 upsert
 upserts
@@ -494,6 +510,7 @@ woff
 woff2
 workspace
 worktree 
+worktrees
 wrk
 ws
 wss

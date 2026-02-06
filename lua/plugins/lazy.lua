@@ -23,6 +23,7 @@ require('lazy').setup {
     { import = 'plugins.lang.daml' },
     { import = 'plugins.lang.rust' },
     { import = 'plugins.lang.markdown' },
+    { import = 'plugins.lang.java' },
     { import = 'plugins.lang.grammar' },
     { import = 'plugins.uncategorized' },
   },

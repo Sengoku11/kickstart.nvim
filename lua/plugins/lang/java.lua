@@ -1,5 +1,6 @@
 local root_markers = {
   '.git',
+  '.mvn',
   'mvnw',
   'gradlew',
   'pom.xml',
@@ -9,6 +10,21 @@ local root_markers = {
   'settings.gradle.kts',
 }
 local project_cache = {}
+
+local function ascends_until(dir, stop_at, fn)
+  local current = dir
+  while current and current ~= '' do
+    fn(current)
+    if stop_at and current == stop_at then
+      break
+    end
+    local parent = vim.fs.dirname(current)
+    if not parent or parent == current then
+      break
+    end
+    current = parent
+  end
+end
 
 local function read_file(path)
   local ok, lines = pcall(vim.fn.readfile, path)
@@ -24,24 +40,70 @@ local function detect_project_root(bufnr)
     return vim.loop.cwd()
   end
 
-  local root = vim.fs.root(path, root_markers)
-  if root then
-    return root
+  local file_dir = vim.fs.dirname(path)
+  local git_root = vim.fs.root(path, { '.git' })
+  local top_pom = nil
+  local maven_root = nil
+
+  ascends_until(file_dir, git_root, function(dir)
+    if vim.fn.filereadable(dir .. '/pom.xml') == 1 then
+      top_pom = dir
+    end
+    if not maven_root and vim.fn.isdirectory(dir .. '/.mvn') == 1 then
+      maven_root = dir
+    end
+  end)
+
+  if maven_root then
+    return maven_root
+  end
+  if top_pom then
+    return top_pom
   end
 
-  return vim.fs.dirname(path)
+  local generic_root = vim.fs.root(path, root_markers)
+  if generic_root then
+    return generic_root
+  end
+
+  return file_dir
 end
 
 local function detect_settings_xml(root)
   local candidates = {
     root .. '/settings.xml',
     root .. '/.mvn/settings.xml',
+    vim.fn.expand '~/.m2/settings.xml',
   }
 
   for _, file in ipairs(candidates) do
     if vim.fn.filereadable(file) == 1 then
       return file
     end
+  end
+
+  return nil
+end
+
+local function infer_local_repo_from_settings(settings_xml)
+  if not settings_xml then
+    return nil
+  end
+
+  local content = read_file(settings_xml)
+  if not content then
+    return nil
+  end
+
+  local repo = content:match '<localRepository>%s*(.-)%s*</localRepository>'
+  if not repo or repo == '' then
+    return nil
+  end
+
+  repo = repo:gsub('${user.home}', vim.fn.expand '~')
+  repo = vim.fn.expand(repo)
+  if vim.fn.isdirectory(repo) == 1 then
+    return repo
   end
 
   return nil
@@ -115,51 +177,22 @@ local function detect_java_home(version_major)
   return nil
 end
 
-local function run_mvn_for_local_repo(root, settings_xml)
-  if vim.fn.executable 'mvn' ~= 1 then
-    return nil
+local function detect_maven_local_repo(_, settings_xml)
+  local repo = vim.env.MAVEN_REPO_LOCAL
+  if repo and repo ~= '' and vim.fn.isdirectory(repo) == 1 then
+    return repo
   end
 
-  local cmd = { 'mvn', '-q', '-DforceStdout', 'help:evaluate', '-Dexpression=settings.localRepository' }
-  if settings_xml then
-    table.insert(cmd, '-s')
-    table.insert(cmd, settings_xml)
+  repo = infer_local_repo_from_settings(settings_xml)
+  if repo then
+    return repo
   end
 
-  if vim.system then
-    local result = vim.system(cmd, { cwd = root, text = true }):wait()
-    if result.code == 0 and result.stdout then
-      for line in result.stdout:gmatch '[^\r\n]+' do
-        local value = vim.trim(line)
-        if value ~= '' and not value:match '^%[' and vim.fn.isdirectory(value) == 1 then
-          return value
-        end
-      end
-    end
-    return nil
+  local global_settings = vim.fn.expand '~/.m2/settings.xml'
+  if (not settings_xml or settings_xml ~= global_settings) and vim.fn.filereadable(global_settings) == 1 then
+    repo = infer_local_repo_from_settings(global_settings)
   end
 
-  local escaped_root = vim.fn.shellescape(root)
-  local escaped_cmd = {}
-  for _, part in ipairs(cmd) do
-    table.insert(escaped_cmd, vim.fn.shellescape(part))
-  end
-  local shell_cmd = table.concat(escaped_cmd, ' ')
-  local out = vim.fn.systemlist('cd ' .. escaped_root .. ' && ' .. shell_cmd)
-  if vim.v.shell_error == 0 and out then
-    for _, line in ipairs(out) do
-      local value = vim.trim(line)
-      if value ~= '' and not value:match '^%[' and vim.fn.isdirectory(value) == 1 then
-        return value
-      end
-    end
-  end
-
-  return nil
-end
-
-local function detect_maven_local_repo(root, settings_xml)
-  local repo = run_mvn_for_local_repo(root, settings_xml)
   if repo then
     return repo
   end
@@ -169,6 +202,17 @@ local function detect_maven_local_repo(root, settings_xml)
     return fallback
   end
 
+  return nil
+end
+
+local function detect_maven_global_settings()
+  local m2_home = vim.env.M2_HOME or vim.env.MAVEN_HOME
+  if m2_home and m2_home ~= '' then
+    local candidate = m2_home .. '/conf/settings.xml'
+    if vim.fn.filereadable(candidate) == 1 then
+      return candidate
+    end
+  end
   return nil
 end
 
@@ -281,6 +325,7 @@ local function setup_jdtls(bufnr)
 
     cached = {
       settings_xml = settings_xml,
+      global_settings_xml = detect_maven_global_settings(),
       java_version_major = java_version_major,
       java_home = java_home,
       local_repo = local_repo,
@@ -290,7 +335,8 @@ local function setup_jdtls(bufnr)
   end
 
   local project_name = vim.fs.basename(root_dir)
-  local workspace_dir = vim.fn.stdpath 'data' .. '/jdtls-workspace/' .. project_name
+  local workspace_id = vim.fn.sha256(vim.fs.normalize(root_dir)):sub(1, 12)
+  local workspace_dir = vim.fn.stdpath 'data' .. '/jdtls-workspace/' .. project_name .. '-' .. workspace_id
   vim.fn.mkdir(workspace_dir, 'p')
 
   local cmd = detect_jdtls_cmd(workspace_dir, cached.lombok_jar, cached.java_home)
@@ -313,6 +359,10 @@ local function setup_jdtls(bufnr)
       java = {
         configuration = {
           runtimes = {},
+          maven = {},
+        },
+        import = {
+          maven = {},
         },
       },
     },
@@ -332,6 +382,16 @@ local function setup_jdtls(bufnr)
         default = true,
       },
     }
+  end
+
+  if cached.settings_xml then
+    config.settings.java.configuration.maven.userSettings = cached.settings_xml
+    config.settings.java.import.maven.userSettings = cached.settings_xml
+  end
+
+  if cached.global_settings_xml then
+    config.settings.java.configuration.maven.globalSettings = cached.global_settings_xml
+    config.settings.java.import.maven.globalSettings = cached.global_settings_xml
   end
 
   jdtls.start_or_attach(config)

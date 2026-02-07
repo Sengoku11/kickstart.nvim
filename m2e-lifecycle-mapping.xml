@@ -21,5 +21,25 @@
         <ignore />
       </action>
     </pluginExecution>
+
+    <!--
+      Project-specific import override:
+      Avoid executing antrun "copy-config" (process-resources) inside m2e/JDTLS.
+      This execution depends on extension-scoped MavenProject context that is not
+      available during IDE import in some environments.
+    -->
+    <pluginExecution>
+      <pluginExecutionFilter>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <versionRange>[3.1.0,)</versionRange>
+        <goals>
+          <goal>run</goal>
+        </goals>
+      </pluginExecutionFilter>
+      <action>
+        <ignore />
+      </action>
+    </pluginExecution>
   </pluginExecutions>
 </lifecycleMappingMetadata>

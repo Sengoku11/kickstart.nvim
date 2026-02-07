@@ -367,6 +367,9 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
       '-Dgradle.enterprise.enabled=false',
       '-Ddevelocity.scan.disabled=true',
       '-Dscan=false',
+      '-Dcom.gradle.scan.disabled=true',
+      '-Dgradle.scan.disable=true',
+      '-Dcom.gradle.enterprise.maven.extension.enabled=false',
       '-Dgradle.enterprise.maven.extension.enabled=false',
       '-Ddevelocity.maven.extension.enabled=false',
     })
@@ -475,7 +478,7 @@ local function build_java_settings(base_settings, cached)
   settings.java.configuration = settings.java.configuration or {}
   settings.java.configuration.updateBuildConfiguration = settings.java.configuration.updateBuildConfiguration or 'automatic'
   settings.java.configuration.maven = settings.java.configuration.maven or {}
-  settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction or 'execute'
+  settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction or 'ignore'
   settings.java.configuration.maven.notCoveredPluginExecutionSeverity = settings.java.configuration.maven.notCoveredPluginExecutionSeverity
     or 'warning'
 

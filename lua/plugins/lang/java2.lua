@@ -1244,13 +1244,26 @@ local function find_generated_package_files(root_dir, package_name)
 end
 
 local function open_report_buffer(title, lines)
+  local safe_lines = {}
+  for _, line in ipairs(lines or {}) do
+    local text = tostring(line or '')
+    local chunks = vim.split(text, '\n', { plain = true })
+    if vim.tbl_isempty(chunks) then
+      table.insert(safe_lines, '')
+    else
+      for _, chunk in ipairs(chunks) do
+        table.insert(safe_lines, chunk)
+      end
+    end
+  end
+
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(buf, title)
   vim.bo[buf].buftype = 'nofile'
   vim.bo[buf].bufhidden = 'wipe'
   vim.bo[buf].swapfile = false
   vim.bo[buf].filetype = 'markdown'
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, safe_lines)
   vim.cmd 'botright split'
   vim.api.nvim_win_set_buf(0, buf)
 end

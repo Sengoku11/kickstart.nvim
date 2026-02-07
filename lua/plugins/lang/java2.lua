@@ -1053,6 +1053,328 @@ local function refresh_jdtls_projects(root_dir, bufnr)
   end
 end
 
+local function list_generated_source_dirs(root_dir)
+  local seen = {}
+  local dirs = {}
+  local patterns = {
+    root_dir .. '/**/target/generated-sources/**/src/main/java',
+    root_dir .. '/**/target/generated-sources/**/src/generated/java',
+    root_dir .. '/**/target/generated-sources/**/java',
+  }
+
+  for _, pattern in ipairs(patterns) do
+    local matches = vim.fn.glob(pattern, true, true)
+    if type(matches) == 'table' then
+      for _, path in ipairs(matches) do
+        if vim.fn.isdirectory(path) == 1 then
+          local normalized = vim.fs.normalize(path)
+          if not seen[normalized] then
+            seen[normalized] = true
+            table.insert(dirs, normalized)
+          end
+        end
+      end
+    end
+  end
+
+  table.sort(dirs)
+  return dirs
+end
+
+local function attach_generated_sources(root_dir, bufnr)
+  bufnr = bufnr or 0
+  local source_dirs = list_generated_source_dirs(root_dir)
+  if vim.tbl_isempty(source_dirs) then
+    return
+  end
+
+  local uri = vim.uri_from_bufnr(bufnr)
+  if not uri or uri == '' then
+    uri = vim.uri_from_fname(root_dir .. '/pom.xml')
+  end
+
+  for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
+    if client and client.config and client.config.root_dir == root_dir then
+      for _, dir in ipairs(source_dirs) do
+        local dir_uri = vim.uri_from_fname(dir)
+        local arg_sets = {
+          { uri, dir },
+          { uri, dir_uri },
+          { uri, { dir } },
+          { uri, { dir_uri } },
+        }
+        for _, args in ipairs(arg_sets) do
+          client.request('workspace/executeCommand', {
+            command = 'java.project.addToSourcePath',
+            arguments = args,
+          }, function() end, bufnr)
+        end
+      end
+    end
+  end
+end
+
+local function request_list_source_paths(client, bufnr, uri, cb)
+  local arg_sets = {
+    { uri },
+    { uri, {} },
+    {},
+  }
+  local idx = 1
+
+  local function try_next()
+    local args = arg_sets[idx]
+    idx = idx + 1
+    if not args then
+      cb(nil, nil)
+      return
+    end
+
+    client.request('workspace/executeCommand', {
+      command = 'java.project.listSourcePaths',
+      arguments = args,
+    }, function(err, result)
+      if not err and type(result) == 'table' then
+        cb(nil, result)
+        return
+      end
+      try_next()
+    end, bufnr)
+  end
+
+  try_next()
+end
+
+local function tail_file_lines(path, max_lines)
+  if not path or path == '' or vim.fn.filereadable(path) ~= 1 then
+    return {}
+  end
+
+  local lines = {}
+  if vim.fn.executable 'tail' == 1 then
+    lines = vim.fn.systemlist({ 'tail', '-n', tostring(max_lines), path })
+    if vim.v.shell_error == 0 and type(lines) == 'table' then
+      return lines
+    end
+  end
+
+  local all = vim.fn.readfile(path)
+  if type(all) ~= 'table' then
+    return {}
+  end
+  if #all <= max_lines then
+    return all
+  end
+  return vim.list_slice(all, #all - max_lines + 1, #all)
+end
+
+local function collect_log_hits(path, patterns, max_lines, max_hits)
+  local lines = tail_file_lines(path, max_lines)
+  if vim.tbl_isempty(lines) then
+    return {}
+  end
+
+  local hits = {}
+  for idx, line in ipairs(lines) do
+    local lowered = line:lower()
+    local matched = false
+    for _, pattern in ipairs(patterns) do
+      if pattern ~= '' and lowered:find(pattern, 1, true) then
+        matched = true
+        break
+      end
+    end
+    if matched then
+      table.insert(hits, string.format('%s:%d: %s', path, idx, line))
+      if #hits >= max_hits then
+        break
+      end
+    end
+  end
+
+  return hits
+end
+
+local function gather_log_candidates(workspace_dir)
+  local seen = {}
+  local paths = {}
+  local function add(path)
+    if not path or path == '' then
+      return
+    end
+    path = vim.fs.normalize(vim.fn.expand(path))
+    if seen[path] then
+      return
+    end
+    if vim.fn.filereadable(path) == 1 then
+      seen[path] = true
+      table.insert(paths, path)
+    end
+  end
+
+  if workspace_dir and workspace_dir ~= '' then
+    workspace_dir = vim.fs.normalize(vim.fn.expand(workspace_dir))
+    add(workspace_dir .. '/.metadata/.log')
+    for _, path in ipairs(vim.fn.glob(workspace_dir .. '/.metadata/.plugins/**/*.log', true, true)) do
+      local lowered = path:lower()
+      if lowered:find('m2e', 1, true) or lowered:find('jdt', 1, true) or lowered:find('maven', 1, true) then
+        add(path)
+      end
+    end
+  end
+
+  local lsp_log_path = vim.lsp.get_log_path and vim.lsp.get_log_path() or nil
+  add(lsp_log_path)
+
+  table.sort(paths)
+  return paths
+end
+
+local function find_generated_package_files(root_dir, package_name)
+  if not root_dir or root_dir == '' or not package_name or package_name == '' then
+    return {}
+  end
+  local rel = package_name:gsub('%.', '/')
+  local pattern = root_dir .. '/**/target/generated-sources/**/' .. rel .. '/**/*.java'
+  local files = vim.fn.glob(pattern, true, true)
+  if type(files) ~= 'table' then
+    return {}
+  end
+  table.sort(files)
+  return files
+end
+
+local function open_report_buffer(title, lines)
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_name(buf, title)
+  vim.bo[buf].buftype = 'nofile'
+  vim.bo[buf].bufhidden = 'wipe'
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].filetype = 'markdown'
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.cmd 'botright split'
+  vim.api.nvim_win_set_buf(0, buf)
+end
+
+local function run_root_cause_probe(query)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = bufnr }
+  if vim.tbl_isempty(clients) then
+    vim.notify('[java2] No jdtls client attached to current buffer.', vim.log.levels.WARN)
+    return
+  end
+
+  local client = clients[1]
+  local root_dir = client.config and client.config.root_dir or ''
+  local uri = vim.uri_from_bufnr(bufnr)
+  local state = vim.g.ba_jdtls_last or {}
+  local workspace_dir = state.workspace_dir and vim.fs.normalize(vim.fn.expand(state.workspace_dir)) or nil
+  local query_path = query:gsub('%.', '/')
+  local patterns = {
+    'outofscopeexception',
+    'failed to execute mojo',
+    'unable to provision',
+    'no mavenproject is executing on this thread',
+    'pluginexecutionexception',
+    'openapi-generator-maven-plugin',
+    'maven-antrun-plugin',
+    'import cannot be resolved',
+    'the import cannot be resolved',
+    query:lower(),
+    query_path:lower(),
+  }
+
+  vim.notify('[java2] Running root-cause probe for import resolution...', vim.log.levels.INFO)
+
+  client.request('java/buildWorkspace', true, function(build_err, build_result)
+    client.request('workspace/executeCommand', {
+      command = 'java.project.getClasspaths',
+      arguments = { uri, vim.fn.json_encode { scope = 'runtime' } },
+    }, function(cp_err, classpaths)
+      request_list_source_paths(client, bufnr, uri, function(sp_err, source_paths)
+        vim.schedule(function()
+          local log_candidates = gather_log_candidates(workspace_dir)
+          local hit_lines = {}
+          for _, path in ipairs(log_candidates) do
+            local hits = collect_log_hits(path, patterns, 2500, 60)
+            vim.list_extend(hit_lines, hits)
+          end
+
+          local generated_files = find_generated_package_files(root_dir, query)
+          local generated_dirs = list_generated_source_dirs(root_dir)
+
+          local report = {
+            '# JDTLS Root Cause Probe',
+            '',
+            '- query: `' .. query .. '`',
+            '- root_dir: `' .. tostring(root_dir) .. '`',
+            '- workspace_dir: `' .. tostring(workspace_dir or '') .. '`',
+            '- build_result: `' .. tostring(build_result) .. '`',
+            '- build_error: `' .. tostring(build_err and (build_err.message or vim.inspect(build_err)) or 'nil') .. '`',
+            '- classpath_error: `' .. tostring(cp_err and (cp_err.message or vim.inspect(cp_err)) or 'nil') .. '`',
+            '- source_paths_error: `' .. tostring(sp_err and (sp_err.message or vim.inspect(sp_err)) or 'nil') .. '`',
+            '- generated_files_count: `' .. tostring(#generated_files) .. '`',
+            '- generated_dirs_count: `' .. tostring(#generated_dirs) .. '`',
+            '',
+            '## Generated Dirs',
+          }
+
+          if vim.tbl_isempty(generated_dirs) then
+            table.insert(report, '- none detected under `target/generated-sources`')
+          else
+            for _, dir in ipairs(vim.list_slice(generated_dirs, 1, 40)) do
+              table.insert(report, '- `' .. dir .. '`')
+            end
+          end
+
+          table.insert(report, '')
+          table.insert(report, '## Generated Files Matching Query')
+          if vim.tbl_isempty(generated_files) then
+            table.insert(report, '- none found')
+          else
+            for _, file in ipairs(vim.list_slice(generated_files, 1, 40)) do
+              table.insert(report, '- `' .. file .. '`')
+            end
+          end
+
+          table.insert(report, '')
+          table.insert(report, '## JDTLS Source Paths')
+          if type(source_paths) == 'table' and not vim.tbl_isempty(source_paths) then
+            for _, item in ipairs(vim.list_slice(source_paths, 1, 120)) do
+              table.insert(report, '- `' .. tostring(item) .. '`')
+            end
+          else
+            table.insert(report, '- no source paths returned')
+          end
+
+          table.insert(report, '')
+          table.insert(report, '## JDTLS Runtime Classpaths')
+          local cps = type(classpaths) == 'table' and classpaths.classpaths or nil
+          if type(cps) == 'table' and not vim.tbl_isempty(cps) then
+            for _, item in ipairs(vim.list_slice(cps, 1, 120)) do
+              table.insert(report, '- `' .. tostring(item) .. '`')
+            end
+          else
+            table.insert(report, '- no classpaths returned')
+          end
+
+          table.insert(report, '')
+          table.insert(report, '## Relevant Log Hits')
+          if vim.tbl_isempty(hit_lines) then
+            table.insert(report, '- no matching lines found in scanned logs')
+          else
+            for _, line in ipairs(vim.list_slice(hit_lines, 1, 300)) do
+              table.insert(report, '- ' .. line)
+            end
+          end
+
+          open_report_buffer('JdtRootCause.md', report)
+        end)
+      end)
+    end, bufnr)
+  end, bufnr)
+end
+
 local function run_maven_sync(root_dir, cached, opts)
   opts = opts or {}
   local state = maven_sync_state[root_dir] or {}
@@ -1092,6 +1414,7 @@ local function run_maven_sync(root_dir, cached, opts)
         vim.notify('[java] Maven sync finished. Refreshing JDTLS import/diagnostics...', vim.log.levels.INFO)
         refresh_jdtls_import(root_dir)
         refresh_jdtls_projects(root_dir, 0)
+        attach_generated_sources(root_dir, 0)
       else
         local msg = '[java] Maven sync failed'
         if stderr_first ~= '' then
@@ -1107,6 +1430,7 @@ local function trigger_initial_diagnostics_refresh(root_dir)
   vim.defer_fn(function()
     refresh_jdtls_import(root_dir)
     refresh_jdtls_projects(root_dir, 0)
+    attach_generated_sources(root_dir, 0)
   end, 800)
 end
 
@@ -1540,6 +1864,7 @@ return {
           apply_maven_profiles_enabled = should_apply_active_profiles(),
           include_env_maven_profiles = env_truthy 'JDTLS_INCLUDE_ENV_MAVEN_PROFILES',
           maven_import_arguments = build_maven_import_arguments(cached),
+          generated_source_dirs = list_generated_source_dirs(root_dir),
           root_mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower(),
         }
 
@@ -1617,10 +1942,77 @@ return {
             return
           end
           refresh_jdtls_projects(root_dir, 0)
+          attach_generated_sources(root_dir, 0)
           refresh_jdtls_import(root_dir)
           vim.notify('[java] Triggered full project configuration refresh for all detected Java projects.', vim.log.levels.INFO)
         end, {
           desc = 'Force projectConfigurationsUpdate/buildProjects for all JDTLS projects in current root',
+        })
+      end
+
+      if vim.fn.exists ':JdtAttachGeneratedSources' == 0 then
+        vim.api.nvim_create_user_command('JdtAttachGeneratedSources', function()
+          local bufname = vim.api.nvim_buf_get_name(0)
+          if bufname == '' then
+            vim.notify('[java] Cannot attach generated sources: no file in current buffer.', vim.log.levels.WARN)
+            return
+          end
+          local root_dir = opts.root_dir(bufname)
+          if not root_dir then
+            vim.notify('[java] Cannot attach generated sources: no Java project root found.', vim.log.levels.WARN)
+            return
+          end
+          local dirs = list_generated_source_dirs(root_dir)
+          if vim.tbl_isempty(dirs) then
+            vim.notify('[java] No generated source directories found under target/generated-sources.', vim.log.levels.INFO)
+            return
+          end
+          attach_generated_sources(root_dir, 0)
+          refresh_jdtls_projects(root_dir, 0)
+          refresh_jdtls_import(root_dir)
+          vim.notify('[java] Requested JDTLS to add generated source directories to source path.', vim.log.levels.INFO)
+        end, {
+          desc = 'Add target/generated-sources directories to JDTLS source path and refresh import',
+        })
+      end
+
+      if vim.fn.exists ':JdtSourcePaths' == 0 then
+        vim.api.nvim_create_user_command('JdtSourcePaths', function()
+          local bufnr = vim.api.nvim_get_current_buf()
+          local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = bufnr }
+          if vim.tbl_isempty(clients) then
+            vim.notify('[java2] No jdtls client attached to current buffer.', vim.log.levels.WARN)
+            return
+          end
+
+          local client = clients[1]
+          local root_dir = client.config and client.config.root_dir or ''
+          local uri = vim.uri_from_bufnr(bufnr)
+          local generated_dirs = list_generated_source_dirs(root_dir)
+
+          request_list_source_paths(client, bufnr, uri, function(err, source_paths)
+            vim.schedule(function()
+              local state = {
+                root_dir = root_dir,
+                generated_dirs = generated_dirs,
+                source_paths = source_paths,
+                error = err and (err.message or vim.inspect(err)) or nil,
+              }
+              vim.notify(vim.inspect(state), vim.log.levels.INFO)
+            end)
+          end)
+        end, {
+          desc = 'Show JDTLS source paths and detected generated source directories',
+        })
+      end
+
+      if vim.fn.exists ':JdtRootCause' == 0 then
+        vim.api.nvim_create_user_command('JdtRootCause', function(command_opts)
+          local query = command_opts.args ~= '' and vim.trim(command_opts.args) or 'fr.bdf'
+          run_root_cause_probe(query)
+        end, {
+          nargs = '?',
+          desc = 'Collect concrete JDTLS/m2e/classpath evidence for unresolved imports (default query: fr.bdf)',
         })
       end
 
@@ -1692,6 +2084,7 @@ return {
           local client = clients[1]
           local root_dir = client.config and client.config.root_dir or ''
           refresh_jdtls_projects(root_dir, bufnr)
+          attach_generated_sources(root_dir, bufnr)
           client.request('workspace/executeCommand', {
             command = 'java.project.import',
             arguments = {},

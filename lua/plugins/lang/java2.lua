@@ -1103,6 +1103,9 @@ local function attach_generated_sources(root_dir, bufnr)
   end
 
   local state = generated_source_attach_state[root_dir] or {}
+  if state.__unsupported then
+    return
+  end
   for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
     if client and client.config and client.config.root_dir == root_dir then
       for _, dir in ipairs(source_dirs) do
@@ -1116,6 +1119,10 @@ local function attach_generated_sources(root_dir, bufnr)
             error = err and (err.message or vim.inspect(err)) or nil,
             result = result,
           }
+          local message = type(result) == 'table' and result.message or ''
+          if type(message) == 'string' and message:find('Unsupported operation', 1, true) then
+            state.__unsupported = true
+          end
           generated_source_attach_state[root_dir] = state
         end, bufnr)
       end
@@ -1130,6 +1137,18 @@ local function request_list_source_paths(client, bufnr, uri, cb)
   }, function(err, result)
     if err then
       cb(err, nil, result)
+      return
+    end
+    if type(result) == 'table' and type(result.data) == 'table' then
+      local out = {}
+      for _, item in ipairs(result.data) do
+        if type(item) == 'table' and type(item.path) == 'string' and item.path ~= '' then
+          table.insert(out, item.path)
+        elseif type(item) == 'string' and item ~= '' then
+          table.insert(out, item)
+        end
+      end
+      cb(nil, out, result)
       return
     end
     if type(result) == 'table' and type(result.sourcePaths) == 'table' then

@@ -158,6 +158,59 @@ local function infer_java_version_from_settings(settings_xml)
   return '17'
 end
 
+local function resolve_pom_property(value, content)
+  if not value or value == '' or not content then
+    return value
+  end
+
+  local prop = value:match '^%${([%w%._%-]+)}$'
+  if not prop then
+    return value
+  end
+
+  local escaped = prop:gsub('([%-%.])', '%%%1')
+  local resolved = content:match('<' .. escaped .. '>%s*(.-)%s*</' .. escaped .. '>')
+  if resolved and resolved ~= '' then
+    return resolved
+  end
+
+  return value
+end
+
+local function infer_java_version_from_pom(root_dir)
+  if not root_dir or root_dir == '' then
+    return nil
+  end
+
+  local pom_xml = root_dir .. '/pom.xml'
+  if vim.fn.filereadable(pom_xml) ~= 1 then
+    return nil
+  end
+
+  local content = read_file(pom_xml)
+  if not content then
+    return nil
+  end
+
+  local patterns = {
+    '<maven%.compiler%.release>%s*(.-)%s*</maven%.compiler%.release>',
+    '<maven%.compiler%.source>%s*(.-)%s*</maven%.compiler%.source>',
+    '<java%.version>%s*(.-)%s*</java%.version>',
+    '<jdk%.version>%s*(.-)%s*</jdk%.version>',
+    '<release>%s*(.-)%s*</release>',
+    '<source>%s*(.-)%s*</source>',
+  }
+
+  for _, pattern in ipairs(patterns) do
+    local version = resolve_pom_property(content:match(pattern), content)
+    if version and version ~= '' then
+      return version
+    end
+  end
+
+  return nil
+end
+
 local function normalize_java_version(version)
   if not version or version == '' then
     return 17
@@ -182,16 +235,92 @@ local function normalize_java_version(version)
 end
 
 local function detect_java_home(version_major)
-  if vim.fn.executable '/usr/libexec/java_home' == 1 then
-    local out = vim.fn.systemlist { '/usr/libexec/java_home', '-v', tostring(version_major) }
+  local function try_mac_java_home(query)
+    if vim.fn.executable '/usr/libexec/java_home' ~= 1 then
+      return nil
+    end
+    local out = vim.fn.systemlist { '/usr/libexec/java_home', '-v', query }
     if vim.v.shell_error == 0 and out and out[1] and out[1] ~= '' and vim.fn.isdirectory(out[1]) == 1 then
       return out[1]
+    end
+    return nil
+  end
+
+  if vim.fn.executable '/usr/libexec/java_home' == 1 then
+    local exact = try_mac_java_home(tostring(version_major))
+    if exact then
+      return exact
+    end
+
+    local at_least = try_mac_java_home(tostring(version_major) .. '+')
+    if at_least then
+      return at_least
     end
   end
 
   local java_home_env = vim.env.JAVA_HOME
   if java_home_env and java_home_env ~= '' and vim.fn.isdirectory(java_home_env) == 1 then
     return java_home_env
+  end
+
+  return nil
+end
+
+local function extract_toolchain_candidates(toolchains_xml)
+  local candidates = {}
+  if not toolchains_xml or toolchains_xml == '' or vim.fn.filereadable(toolchains_xml) ~= 1 then
+    return candidates
+  end
+
+  local content = read_file(toolchains_xml)
+  if not content then
+    return candidates
+  end
+
+  for block in content:gmatch '<toolchain>(.-)</toolchain>' do
+    local toolchain_type = block:match '<type>%s*(.-)%s*</type>'
+    if toolchain_type == 'jdk' then
+      local version = block:match '<provides>.-<version>%s*(.-)%s*</version>.-</provides>'
+      local jdk_home = block:match '<configuration>.-<jdkHome>%s*(.-)%s*</jdkHome>.-</configuration>'
+      if version and jdk_home then
+        jdk_home = jdk_home:gsub('${user.home}', vim.fn.expand '~')
+        jdk_home = vim.fn.expand(jdk_home)
+        if vim.fn.isdirectory(jdk_home) == 1 then
+          table.insert(candidates, { version = version, home = jdk_home })
+        end
+      end
+    end
+  end
+
+  return candidates
+end
+
+local function detect_java_home_from_toolchains(root_dir, requested_major)
+  local files = {}
+  if root_dir and root_dir ~= '' then
+    table.insert(files, root_dir .. '/.mvn/toolchains.xml')
+  end
+  table.insert(files, vim.fn.expand '~/.m2/toolchains.xml')
+
+  local best_exact = nil
+  local best_ge = nil
+
+  for _, file in ipairs(files) do
+    for _, candidate in ipairs(extract_toolchain_candidates(file)) do
+      local major = normalize_java_version(candidate.version)
+      if major == requested_major and not best_exact then
+        best_exact = candidate.home
+      elseif major > requested_major and (not best_ge or major < best_ge.major) then
+        best_ge = { major = major, home = candidate.home }
+      end
+    end
+  end
+
+  if best_exact then
+    return best_exact
+  end
+  if best_ge then
+    return best_ge.home
   end
 
   return nil
@@ -223,8 +352,14 @@ local function detect_jdtls_java_bin(cached)
     return java_bin
   end
 
-  local preferred_launch_major = tonumber(vim.env.JDTLS_LAUNCH_JAVA_MAJOR or '') or 21
+  local preferred_launch_major = tonumber(vim.env.JDTLS_LAUNCH_JAVA_MAJOR or '')
+    or math.max(21, cached.java_version_major or 21)
   java_bin = java_bin_from_home(detect_java_home(preferred_launch_major))
+  if java_bin then
+    return java_bin
+  end
+
+  java_bin = java_bin_from_home(detect_java_home(21))
   if java_bin then
     return java_bin
   end
@@ -387,10 +522,15 @@ local function detect_lifecycle_mappings_file(root_dir)
   return nil
 end
 
-local function derive_project_key(root_dir)
+local function derive_project_key(root_dir, cached)
   local normalized = vim.fs.normalize(root_dir)
   local base = vim.fs.basename(normalized)
-  local hash = vim.fn.sha256(normalized):sub(1, 10)
+  local java_major = cached and cached.java_version_major or nil
+  local key_seed = normalized
+  if java_major then
+    key_seed = key_seed .. '|java:' .. tostring(java_major)
+  end
+  local hash = vim.fn.sha256(key_seed):sub(1, 10)
   return base .. '-' .. hash
 end
 
@@ -400,14 +540,20 @@ local function get_project_cache(root_dir)
   end
 
   local settings_xml = detect_settings_xml(root_dir)
-  local java_version_major = normalize_java_version(infer_java_version_from_settings(settings_xml))
+  local pom_java_version = infer_java_version_from_pom(root_dir)
+  local settings_java_version = infer_java_version_from_settings(settings_xml)
+  local java_version_major = normalize_java_version(pom_java_version or settings_java_version)
+
+  local java_home = detect_java_home(java_version_major) or detect_java_home_from_toolchains(root_dir, java_version_major)
 
   local cached = {
     settings_xml = settings_xml,
     global_settings_xml = detect_maven_global_settings(),
     lifecycle_mappings_xml = detect_lifecycle_mappings_file(root_dir),
+    pom_java_version = pom_java_version,
+    settings_java_version = settings_java_version,
     java_version_major = java_version_major,
-    java_home = detect_java_home(java_version_major),
+    java_home = java_home,
     local_repo = detect_maven_local_repo(settings_xml),
     maven_offline = env_truthy 'JDTLS_MAVEN_OFFLINE' or env_truthy 'MAVEN_OFFLINE',
     has_ge_maven_extension = has_gradle_enterprise_maven_extension(root_dir),
@@ -420,7 +566,7 @@ end
 
 local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
   local jdtls_xms = vim.env.JDTLS_XMS or '1g'
-  local jdtls_xmx = vim.env.JDTLS_XMX or '2g'
+  local jdtls_xmx = vim.env.JDTLS_XMX or '4g'
   local jdtls_java_bin = detect_jdtls_java_bin(cached)
   local extra_jvm_props = {}
   if cached.has_ge_maven_extension or env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
@@ -665,6 +811,12 @@ local function run_maven_sync(root_dir, cached, opts)
   end)
 end
 
+local function trigger_initial_diagnostics_refresh(root_dir)
+  vim.defer_fn(function()
+    refresh_jdtls_import(root_dir)
+  end, 800)
+end
+
 local function build_java_settings(base_settings, cached)
   local settings = vim.deepcopy(base_settings or {})
   settings.java = settings.java or {}
@@ -704,6 +856,19 @@ local function build_java_settings(base_settings, cached)
   settings.java.import.maven = settings.java.import.maven or {}
   settings.java.import.maven.enabled = true
   settings.java.import.maven.disableTestClasspathFlag = false
+  if cached.settings_xml then
+    settings.java.import.maven.userSettings = cached.settings_xml
+  end
+  if cached.global_settings_xml then
+    settings.java.import.maven.globalSettings = cached.global_settings_xml
+  end
+  if cached.lifecycle_mappings_xml then
+    settings.java.import.maven.lifecycleMappings = cached.lifecycle_mappings_xml
+  end
+  if not settings.java.import.maven.arguments or settings.java.import.maven.arguments == '' then
+    settings.java.import.maven.arguments =
+      '-Dscan=false -Ddevelocity.enabled=false -Dgradle.enterprise.enabled=false -Ddevelocity.maven.extension.enabled=false'
+  end
   settings.java.import.maven.offline = {
     enabled = cached.maven_offline,
   }
@@ -849,8 +1014,8 @@ return {
         end
 
         local project_name = opts.project_name(root_dir)
-        local project_key = opts.project_key(root_dir)
         local cached = get_project_cache(root_dir)
+        local project_key = opts.project_key(root_dir, cached)
         local cmd, config_dir, workspace_dir, cmd_source = opts.full_cmd(opts, project_key, cached)
 
         if not cmd then
@@ -890,6 +1055,8 @@ return {
           settings_xml = cached.settings_xml,
           global_settings_xml = cached.global_settings_xml,
           lifecycle_mappings_xml = cached.lifecycle_mappings_xml,
+          pom_java_version = cached.pom_java_version,
+          settings_java_version = cached.settings_java_version,
           java_home = cached.java_home,
           java_version_major = cached.java_version_major,
           lombok_jar = cached.lombok_jar,
@@ -898,6 +1065,7 @@ return {
         }
 
         require('jdtls').start_or_attach(config)
+        trigger_initial_diagnostics_refresh(root_dir)
 
         if should_auto_maven_sync(cached) then
           run_maven_sync(root_dir, cached, { force = false })

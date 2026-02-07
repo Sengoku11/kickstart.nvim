@@ -3,6 +3,7 @@ local project_cache = {}
 local maven_sync_state = {}
 local workspace_build_state = {}
 local should_apply_active_profiles
+local should_disable_ge_maven_extension
 
 local function env_truthy(name)
   local value = vim.env[name]
@@ -314,11 +315,13 @@ end
 local function detect_active_maven_profiles(root_dir, settings_xml)
   local profiles = {}
 
-  for _, p in ipairs(split_csv(vim.env.JDTLS_MAVEN_PROFILES)) do
-    append_unique(profiles, p)
-  end
-  for _, p in ipairs(split_csv(vim.env.MAVEN_PROFILES_ACTIVE)) do
-    append_unique(profiles, p)
+  if env_truthy 'JDTLS_INCLUDE_ENV_MAVEN_PROFILES' then
+    for _, p in ipairs(split_csv(vim.env.JDTLS_MAVEN_PROFILES)) do
+      append_unique(profiles, p)
+    end
+    for _, p in ipairs(split_csv(vim.env.MAVEN_PROFILES_ACTIVE)) do
+      append_unique(profiles, p)
+    end
   end
   for _, p in ipairs(parse_active_profiles_from_settings(settings_xml)) do
     append_unique(profiles, p)
@@ -644,6 +647,40 @@ local function detect_maven_global_settings()
   return nil
 end
 
+local function append_develocity_disable_flags(args)
+  vim.list_extend(args, {
+    '-Ddevelocity.enabled=false',
+    '-Dgradle.enterprise.enabled=false',
+    '-Ddevelocity.scan.disabled=true',
+    '-Dscan=false',
+    '-Dcom.gradle.scan.disabled=true',
+    '-Dgradle.scan.disable=true',
+    '-Dcom.gradle.enterprise.maven.extension.enabled=false',
+    '-Dgradle.enterprise.maven.extension.enabled=false',
+    '-Ddevelocity.maven.extension.enabled=false',
+  })
+end
+
+local function build_maven_import_arguments(cached)
+  local args = {}
+
+  if cached and cached.local_repo then
+    table.insert(args, '-Dmaven.repo.local=' .. cached.local_repo)
+  end
+
+  if should_apply_active_profiles and should_apply_active_profiles() then
+    if cached and type(cached.active_maven_profiles) == 'table' and #cached.active_maven_profiles > 0 then
+      table.insert(args, '-P' .. table.concat(cached.active_maven_profiles, ','))
+    end
+  end
+
+  if should_disable_ge_maven_extension and should_disable_ge_maven_extension(cached) then
+    append_develocity_disable_flags(args)
+  end
+
+  return table.concat(args, ' ')
+end
+
 local function detect_lombok_jar(local_repo)
   if not local_repo then
     return nil
@@ -731,6 +768,14 @@ local function derive_project_key(root_dir, cached)
   if java_major then
     key_seed = key_seed .. '|java:' .. tostring(java_major)
   end
+  if cached and cached.settings_xml then
+    key_seed = key_seed .. '|settings:' .. vim.fs.normalize(cached.settings_xml)
+  end
+  if cached and cached.local_repo then
+    key_seed = key_seed .. '|repo:' .. vim.fs.normalize(cached.local_repo)
+  end
+  key_seed = key_seed .. '|rootMode:' .. ((vim.env.JDTLS_ROOT_MODE or 'auto'):lower())
+  key_seed = key_seed .. '|importArgs:' .. build_maven_import_arguments(cached)
   local hash = vim.fn.sha256(key_seed):sub(1, 10)
   return base .. '-' .. hash
 end
@@ -774,18 +819,8 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
   local enable_lombok_agent = not env_truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
   local enable_lombok_bootclasspath = env_truthy 'JDTLS_LOMBOK_BOOTCLASSPATH'
   local extra_jvm_props = {}
-  if cached.has_ge_maven_extension or env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
-    vim.list_extend(extra_jvm_props, {
-      '-Ddevelocity.enabled=false',
-      '-Dgradle.enterprise.enabled=false',
-      '-Ddevelocity.scan.disabled=true',
-      '-Dscan=false',
-      '-Dcom.gradle.scan.disabled=true',
-      '-Dgradle.scan.disable=true',
-      '-Dcom.gradle.enterprise.maven.extension.enabled=false',
-      '-Dgradle.enterprise.maven.extension.enabled=false',
-      '-Ddevelocity.maven.extension.enabled=false',
-    })
+  if should_disable_ge_maven_extension and should_disable_ge_maven_extension(cached) then
+    append_develocity_disable_flags(extra_jvm_props)
   end
 
   local explicit_jdtls_bin = vim.env.JDTLS_BIN
@@ -932,6 +967,12 @@ local function build_maven_sync_cmd(cached)
   if cached.settings_xml then
     vim.list_extend(cmd, { '-s', cached.settings_xml })
   end
+  if cached.global_settings_xml then
+    vim.list_extend(cmd, { '-gs', cached.global_settings_xml })
+  end
+  if cached.local_repo then
+    table.insert(cmd, '-Dmaven.repo.local=' .. cached.local_repo)
+  end
   if should_apply_active_profiles() and type(cached.active_maven_profiles) == 'table' and #cached.active_maven_profiles > 0 then
     table.insert(cmd, '-P' .. table.concat(cached.active_maven_profiles, ','))
   end
@@ -940,15 +981,10 @@ local function build_maven_sync_cmd(cached)
     '-DskipTests',
     '-DskipITs',
     '-Dmaven.test.skip=true',
-    '-Dscan=false',
-    '-Ddevelocity.enabled=false',
-    '-Dgradle.enterprise.enabled=false',
-    '-Dcom.gradle.scan.disabled=true',
-    '-Dgradle.scan.disable=true',
-    '-Dcom.gradle.enterprise.maven.extension.enabled=false',
-    '-Dgradle.enterprise.maven.extension.enabled=false',
-    '-Ddevelocity.maven.extension.enabled=false',
   })
+  if should_disable_ge_maven_extension and should_disable_ge_maven_extension(cached) then
+    append_develocity_disable_flags(cmd)
+  end
 
   local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources process-resources compile')
   if vim.tbl_isempty(goals) then
@@ -1052,10 +1088,23 @@ end
 should_apply_active_profiles = function()
   local value = vim.env.JDTLS_APPLY_MAVEN_PROFILES
   if not value or value == '' then
-    return true
+    return false
   end
   value = value:lower()
   return value ~= '0' and value ~= 'false' and value ~= 'no' and value ~= 'off'
+end
+
+should_disable_ge_maven_extension = function(cached)
+  if env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
+    return true
+  end
+  if env_truthy 'JDTLS_DISABLE_GE_MAVEN_EXTENSION' then
+    return true
+  end
+  if env_truthy 'JDTLS_AUTO_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
+    return cached and cached.has_ge_maven_extension or false
+  end
+  return false
 end
 
 local function sanitize_jdtls_capabilities(capabilities)
@@ -1231,9 +1280,13 @@ local function build_java_settings(base_settings, cached)
   if cached.lifecycle_mappings_xml then
     settings.java.import.maven.lifecycleMappings = cached.lifecycle_mappings_xml
   end
-  if not settings.java.import.maven.arguments or settings.java.import.maven.arguments == '' then
-    settings.java.import.maven.arguments =
-      '-Dscan=false -Ddevelocity.enabled=false -Dgradle.enterprise.enabled=false -Ddevelocity.maven.extension.enabled=false'
+  local import_args = build_maven_import_arguments(cached)
+  if import_args ~= '' then
+    if not settings.java.import.maven.arguments or settings.java.import.maven.arguments == '' then
+      settings.java.import.maven.arguments = import_args
+    elseif not settings.java.import.maven.arguments:find(import_args, 1, true) then
+      settings.java.import.maven.arguments = settings.java.import.maven.arguments .. ' ' .. import_args
+    end
   end
   settings.java.import.maven.offline = {
     enabled = cached.maven_offline,
@@ -1426,8 +1479,12 @@ return {
           lombok_agent_enabled = not env_truthy 'JDTLS_DISABLE_LOMBOK_AGENT',
           lombok_bootclasspath_enabled = env_truthy 'JDTLS_LOMBOK_BOOTCLASSPATH',
           maven_offline = cached.maven_offline,
+          local_repo = cached.local_repo,
           has_ge_maven_extension = cached.has_ge_maven_extension,
+          disable_ge_maven_extension = should_disable_ge_maven_extension(cached),
           apply_maven_profiles_enabled = should_apply_active_profiles(),
+          include_env_maven_profiles = env_truthy 'JDTLS_INCLUDE_ENV_MAVEN_PROFILES',
+          maven_import_arguments = build_maven_import_arguments(cached),
           root_mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower(),
         }
 

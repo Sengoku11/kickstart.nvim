@@ -42,5 +42,28 @@
       </action>
     </pluginExecution>
 
+    <!--
+      Generic import guard:
+      m2e/JDTLS can fail on many custom plugin goals ("run", "generate", etc.)
+      in constrained environments (extensions/proxy/classrealm context). Ignore
+      these executions for IDE import only; CLI Maven build remains authoritative.
+    -->
+    <pluginExecution>
+      <pluginExecutionFilter>
+        <groupId>*</groupId>
+        <artifactId>*</artifactId>
+        <versionRange>[0,)</versionRange>
+        <goals>
+          <goal>run</goal>
+          <goal>generate</goal>
+          <goal>copy-resources</goal>
+          <goal>process-resources</goal>
+        </goals>
+      </pluginExecutionFilter>
+      <action>
+        <ignore />
+      </action>
+    </pluginExecution>
+
   </pluginExecutions>
 </lifecycleMappingMetadata>

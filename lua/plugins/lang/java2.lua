@@ -569,6 +569,7 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
   local jdtls_xms = vim.env.JDTLS_XMS or '1g'
   local jdtls_xmx = vim.env.JDTLS_XMX or '4g'
   local jdtls_java_bin = detect_jdtls_java_bin(cached)
+  local enable_lombok_agent = not env_truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
   local extra_jvm_props = {}
   if cached.has_ge_maven_extension or env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
     vim.list_extend(extra_jvm_props, {
@@ -611,7 +612,7 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
       table.insert(cmd, '--jvm-arg=' .. prop)
     end
 
-    if cached.lombok_jar then
+    if enable_lombok_agent and cached.lombok_jar then
       table.insert(cmd, '--jvm-arg=-javaagent:' .. cached.lombok_jar)
       table.insert(cmd, '--jvm-arg=-Xbootclasspath/a:' .. cached.lombok_jar)
     end
@@ -664,7 +665,7 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
 
     vim.list_extend(cmd, extra_jvm_props)
 
-    if cached.lombok_jar then
+    if enable_lombok_agent and cached.lombok_jar then
       table.insert(cmd, '-javaagent:' .. cached.lombok_jar)
       table.insert(cmd, '-Xbootclasspath/a:' .. cached.lombok_jar)
     end
@@ -835,6 +836,17 @@ local function sanitize_jdtls_capabilities(capabilities)
   return sanitized
 end
 
+local function build_jdtls_capabilities()
+  local capabilities = vim.lsp.protocol.make_client_capabilities()
+
+  local ok_blink, blink = pcall(require, 'blink.cmp')
+  if ok_blink and blink.get_lsp_capabilities then
+    capabilities = blink.get_lsp_capabilities(capabilities)
+  end
+
+  return sanitize_jdtls_capabilities(capabilities)
+end
+
 local function get_jdtls_namespace(client_id)
   local ok, ns = pcall(vim.lsp.diagnostic.get_namespace, client_id)
   if ok then
@@ -890,6 +902,46 @@ local function trigger_initial_workspace_build(root_dir, bufnr)
       end
     end
   end, 1400)
+end
+
+local function summarize_root_diagnostics(root_dir)
+  local summary = {
+    total = 0,
+    java = 0,
+    pom = 0,
+    other = 0,
+    errors = 0,
+    warns = 0,
+  }
+
+  local by_file = {}
+  for _, d in ipairs(vim.diagnostic.get(nil)) do
+    local fname = vim.api.nvim_buf_get_name(d.bufnr)
+    if fname ~= '' and fname:find(root_dir, 1, true) == 1 then
+      summary.total = summary.total + 1
+      if fname:sub(-5) == '.java' then
+        summary.java = summary.java + 1
+      elseif fname:sub(-8) == 'pom.xml' then
+        summary.pom = summary.pom + 1
+      else
+        summary.other = summary.other + 1
+      end
+
+      if d.severity == vim.diagnostic.severity.ERROR then
+        summary.errors = summary.errors + 1
+      elseif d.severity == vim.diagnostic.severity.WARN then
+        summary.warns = summary.warns + 1
+      end
+
+      if not by_file[fname] then
+        by_file[fname] = 1
+      else
+        by_file[fname] = by_file[fname] + 1
+      end
+    end
+  end
+
+  return summary, by_file
 end
 
 local function build_java_settings(base_settings, cached)
@@ -1101,26 +1153,13 @@ return {
           return
         end
 
-        local capabilities = nil
-        local ok_blink, blink = pcall(require, 'blink.cmp')
-        if ok_blink and blink.get_lsp_capabilities then
-          capabilities = sanitize_jdtls_capabilities(blink.get_lsp_capabilities())
-        end
-
-        local publish_handler = vim.lsp.handlers['textDocument/publishDiagnostics']
-        local legacy_publish = vim.lsp.diagnostic and vim.lsp.diagnostic.on_publish_diagnostics or nil
-        if legacy_publish then
-          publish_handler = legacy_publish
-        end
+        local capabilities = build_jdtls_capabilities()
 
         local config = {
           cmd = cmd,
           root_dir = root_dir,
           settings = build_java_settings(opts.settings, cached),
           capabilities = capabilities,
-          handlers = {
-            ['textDocument/publishDiagnostics'] = publish_handler,
-          },
           init_options = {
             bundles = opts.bundles or {},
           },
@@ -1144,6 +1183,7 @@ return {
           java_home = cached.java_home,
           java_version_major = cached.java_version_major,
           lombok_jar = cached.lombok_jar,
+          lombok_agent_enabled = not env_truthy 'JDTLS_DISABLE_LOMBOK_AGENT',
           maven_offline = cached.maven_offline,
           has_ge_maven_extension = cached.has_ge_maven_extension,
         }
@@ -1226,6 +1266,68 @@ return {
           }
           vim.notify(vim.inspect(state), vim.log.levels.INFO)
         end, { desc = 'Show jdtls diagnostics state for current buffer' })
+      end
+
+      if vim.fn.exists ':JdtDiagSummary' == 0 then
+        vim.api.nvim_create_user_command('JdtDiagSummary', function()
+          local bufnr = vim.api.nvim_get_current_buf()
+          local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = bufnr }
+          if vim.tbl_isempty(clients) then
+            vim.notify('[java2] No jdtls client attached to current buffer.', vim.log.levels.WARN)
+            return
+          end
+
+          local client = clients[1]
+          local root_dir = client.config and client.config.root_dir or ''
+          local summary, _ = summarize_root_diagnostics(root_dir)
+          local msg = string.format(
+            '[java2] root diagnostics total=%d java=%d pom=%d other=%d errors=%d warns=%d',
+            summary.total,
+            summary.java,
+            summary.pom,
+            summary.other,
+            summary.errors,
+            summary.warns
+          )
+          vim.notify(msg, vim.log.levels.INFO)
+        end, { desc = 'Show jdtls diagnostics summary for current root' })
+      end
+
+      if vim.fn.exists ':JdtDiagProbe' == 0 then
+        vim.api.nvim_create_user_command('JdtDiagProbe', function()
+          local bufnr = vim.api.nvim_get_current_buf()
+          local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = bufnr }
+          if vim.tbl_isempty(clients) then
+            vim.notify('[java2] No jdtls client attached to current buffer.', vim.log.levels.WARN)
+            return
+          end
+
+          local client = clients[1]
+          local root_dir = client.config and client.config.root_dir or ''
+          client.request('workspace/executeCommand', {
+            command = 'java.project.import',
+            arguments = {},
+          }, function() end, bufnr)
+          client.request('workspace/executeCommand', {
+            command = 'java.project.refreshDiagnostics',
+            arguments = {},
+          }, function() end, bufnr)
+          client.request('java/buildWorkspace', true, function(err, result)
+            vim.schedule(function()
+              local summary, _ = summarize_root_diagnostics(root_dir)
+              local state = {
+                build_error = err and (err.message or vim.inspect(err)) or nil,
+                build_result = result,
+                diagnostics_total = summary.total,
+                diagnostics_java = summary.java,
+                diagnostics_pom = summary.pom,
+                diagnostics_other = summary.other,
+                diagnostics_errors = summary.errors,
+              }
+              vim.notify(vim.inspect(state), vim.log.levels.INFO)
+            end)
+          end, bufnr)
+        end, { desc = 'Run import+build and print compact diagnostics summary' })
       end
 
       vim.api.nvim_create_autocmd('FileType', {

@@ -11,62 +11,65 @@ let mapleader = " "
 let maplocalleader = " "
 
 " Let IdeaVim handle split-navigation keys (prevents IDE keymap conflicts).
-sethandler <C-h> a:vim
-sethandler <C-j> a:vim
-sethandler <C-k> a:vim
-sethandler <C-l> a:vim
+silent! sethandler <C-h> a:vim
+silent! sethandler <C-j> a:vim
+silent! sethandler <C-k> a:vim
+silent! sethandler <C-l> a:vim
 
 " ---------- Stateful toggles ----------
 " IdeaVim/IntelliJ actions don't expose tool-window visibility to Vimscript.
 " We emulate Neovim-like toggles by tracking state for keys that are toggles in your nvim config.
-let g:ba_tw_project_open = 0
-let g:ba_tw_terminal_open = 0
-let g:ba_tw_vcs_open = 0
-let g:ba_tw_todo_open = 0
-let g:ba_tw_debug_open = 0
-let g:ba_tw_problems_open = 0
+let g:ba_tw_project_open = get(g:, 'ba_tw_project_open', 0)
+let g:ba_tw_terminal_open = get(g:, 'ba_tw_terminal_open', 0)
+let g:ba_tw_vcs_open = get(g:, 'ba_tw_vcs_open', 0)
+let g:ba_tw_todo_open = get(g:, 'ba_tw_todo_open', 0)
+let g:ba_tw_debug_open = get(g:, 'ba_tw_debug_open', 0)
+let g:ba_tw_problems_open = get(g:, 'ba_tw_problems_open', 0)
 
-function! s:run_action(action_id)
-  let l:prev_err = v:errmsg
-  let v:errmsg = ''
-  execute 'silent! action ' . a:action_id
-  let l:ok = empty(v:errmsg)
-  let v:errmsg = l:prev_err
-  return l:ok
+function! BaRunAction(action_id) abort
+  try
+    execute 'action ' . a:action_id
+    return 1
+  catch
+    return 0
+  endtry
 endfunction
 
-function! s:toggle_toolwindow(varname, activate_action, ...)
-  let l:keep_editor_focus = (a:0 > 0) ? a:1 : 0
+function! BaToggleToolwindow(varname, activate_action) abort
   if get(g:, a:varname, 0)
-    call s:run_action(a:activate_action)
-    call s:run_action('HideActiveWindow')
-    if l:keep_editor_focus
-      call s:run_action('EditorEscape')
-    endif
+    call BaRunAction(a:activate_action)
+    call BaRunAction('HideActiveWindow')
     execute 'let g:' . a:varname . ' = 0'
   else
-    call s:run_action(a:activate_action)
-    if l:keep_editor_focus
-      call s:run_action('EditorEscape')
-    endif
+    call BaRunAction(a:activate_action)
     execute 'let g:' . a:varname . ' = 1'
   endif
 endfunction
 
-function! s:toggle_project_window()
-  " Prefer dedicated toggle if available on this IDE build.
-  if s:run_action('ProjectViewToggle')
+function! BaToggleProjectWindow() abort
+  " Some IDEs expose a dedicated toggle action.
+  if BaRunAction('ProjectViewToggle')
     return
   endif
-  " Fallback to stateful toggle and keep editor focus so repeat keypress works naturally.
-  call s:toggle_toolwindow('ba_tw_project_open', 'ActivateProjectToolWindow', 1)
+  call BaToggleToolwindow('ba_tw_project_open', 'ActivateProjectToolWindow')
 endfunction
 
-function! s:toggle_terminal_window()
-  if s:run_action('ActivateTerminalToolWindow')
+function! BaToggleTerminalWindow() abort
+  if get(g:, 'ba_tw_terminal_open', 0)
+    call BaRunAction('ActivateTerminalToolWindow')
+    call BaRunAction('HideActiveWindow')
+    let g:ba_tw_terminal_open = 0
     return
   endif
-  call s:run_action('Terminal.OpenInTerminal')
+
+  if BaRunAction('ActivateTerminalToolWindow')
+    let g:ba_tw_terminal_open = 1
+    return
+  endif
+
+  if BaRunAction('Terminal.OpenInTerminal')
+    let g:ba_tw_terminal_open = 1
+  endif
 endfunction
 
 " ---------- Core ----------
@@ -109,10 +112,10 @@ nmap <silent> [B <Action>(MoveTabLeft)
 nmap <silent> ]B <Action>(MoveTabRight)
 
 " ---------- Explorer / terminal ----------
-nmap <silent> <leader>e :call <SID>toggle_project_window()<CR>
-nmap <silent> <Bslash> :call <SID>toggle_project_window()<CR>
-nmap <silent> <leader>tt :call <SID>toggle_terminal_window()<CR>
-nmap <silent> <leader>os :call <SID>toggle_toolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
+nmap <silent> <leader>e <Action>(ProjectViewToggle)
+nmap <silent> <Bslash> <Action>(ProjectViewToggle)
+nmap <silent> <leader>tt :action ActivateTerminalToolWindow<CR>:action Terminal.OpenInTerminal<CR>
+nmap <silent> <leader>os :call BaToggleToolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
 nmap <silent> <leader>ob <Action>(RecentFiles)
 
 " ---------- Smart finding / search ----------
@@ -141,7 +144,7 @@ nmap <silent> <leader>s/ <Action>(Find)
 nmap <silent> <leader>sA <Action>(GotoAction)
 nmap <silent> <leader>sc <Action>(GotoAction)
 nmap <silent> <leader>sC <Action>(GotoAction)
-nmap <silent> <leader>sd :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>sd :call BaToggleToolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
 nmap <silent> <leader>sD <Action>(ShowErrorDescription)
 nmap <silent> <leader>sh <Action>(HelpTopics)
 nmap <silent> <leader>sj <Action>(RecentLocations)
@@ -155,8 +158,8 @@ nmap <silent> <leader>s. <Action>(RecentFiles)
 nmap <silent> <leader>su <Action>(LocalHistory.ShowHistory)
 nmap <silent> <leader>ss <Action>(FileStructurePopup)
 nmap <silent> <leader>sS <Action>(GotoSymbol)
-nmap <silent> <leader>st :call <SID>toggle_toolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
-nmap <silent> <leader>sT :call <SID>toggle_toolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
+nmap <silent> <leader>st :call BaToggleToolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
+nmap <silent> <leader>sT :call BaToggleToolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
 
 " ---------- LSP / diagnostics / refactor ----------
 nmap <silent> ga <Action>(ShowIntentionActions)
@@ -186,12 +189,12 @@ nmap <silent> [t <Action>(FindPrevious)
 nmap <silent> ]t <Action>(FindNext)
 nmap <silent> <leader>cs <Action>(FileStructurePopup)
 nmap <silent> <leader>cl <Action>(ShowUsages)
-nmap <silent> <leader>xx :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
-nmap <silent> <leader>xX :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
-nmap <silent> <leader>xL :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
-nmap <silent> <leader>xQ :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
-nmap <silent> <leader>xt :call <SID>toggle_toolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
-nmap <silent> <leader>xT :call <SID>toggle_toolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
+nmap <silent> <leader>xx :call BaToggleToolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>xX :call BaToggleToolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>xL :call BaToggleToolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>xQ :call BaToggleToolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>xt :call BaToggleToolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
+nmap <silent> <leader>xT :call BaToggleToolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
 nmap <silent> <leader>uc <Action>(QuickChangeColorScheme)
 
 " ---------- Git ----------
@@ -200,7 +203,7 @@ nmap <silent> <leader>gp <Action>(OpenInBrowser)
 nmap <silent> <leader>gb <Action>(Git.Branches)
 nmap <silent> <leader>gl <Action>(Vcs.ShowTabbedFileHistory)
 nmap <silent> <leader>gL <Action>(Annotate)
-nmap <silent> <leader>gs :call <SID>toggle_toolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
+nmap <silent> <leader>gs :call BaToggleToolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
 nmap <silent> <leader>gS <Action>(Git.Unstash)
 nmap <silent> <leader>gD <Action>(ShowDiff)
 nmap <silent> <leader>gf <Action>(Vcs.ShowTabbedFileHistory)
@@ -235,7 +238,7 @@ nmap <silent> <leader>dl <Action>(StepOver)
 nmap <silent> <leader>dk <Action>(StepOut)
 nmap <silent> <leader>db <Action>(ToggleLineBreakpoint)
 nmap <silent> <leader>dB <Action>(ViewBreakpoints)
-nmap <silent> <leader>dr :call <SID>toggle_toolwindow('ba_tw_debug_open', 'ActivateDebugToolWindow')<CR>
+nmap <silent> <leader>dr :call BaToggleToolwindow('ba_tw_debug_open', 'ActivateDebugToolWindow')<CR>
 
 " Rust / DAML approximations
 nmap <silent> <leader>cR <Action>(ShowIntentionActions)

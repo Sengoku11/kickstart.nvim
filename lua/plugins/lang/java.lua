@@ -242,6 +242,20 @@ local function has_gradle_enterprise_maven_extension(root)
     or lowered:find('com%.gradle', 1, false) ~= nil
 end
 
+local function detect_lifecycle_mappings_file()
+  local explicit = vim.env.JDTLS_M2E_LIFECYCLE_MAPPINGS
+  if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
+    return explicit
+  end
+
+  local fallback = vim.fn.stdpath 'config' .. '/m2e-lifecycle-mapping.xml'
+  if vim.fn.filereadable(fallback) == 1 then
+    return fallback
+  end
+
+  return nil
+end
+
 local function detect_lombok_jar(local_repo)
   if not local_repo then
     return nil
@@ -361,6 +375,7 @@ local function setup_jdtls(bufnr)
     cached = {
       settings_xml = settings_xml,
       global_settings_xml = detect_maven_global_settings(),
+      lifecycle_mappings_xml = detect_lifecycle_mappings_file(),
       java_version_major = java_version_major,
       java_home = java_home,
       local_repo = local_repo,
@@ -466,12 +481,17 @@ local function setup_jdtls(bufnr)
     config.settings.java.configuration.maven.globalSettings = cached.global_settings_xml
   end
 
+  if cached.lifecycle_mappings_xml then
+    config.settings.java.configuration.maven.lifecycleMappings = cached.lifecycle_mappings_xml
+  end
+
   vim.g.ba_jdtls_last = {
     root_dir = root_dir,
     workspace_dir = workspace_dir,
     cmd = cmd,
     settings_xml = cached.settings_xml,
     global_settings_xml = cached.global_settings_xml,
+    lifecycle_mappings_xml = cached.lifecycle_mappings_xml,
     java_home = cached.java_home,
     java_version_major = cached.java_version_major,
     lombok_jar = cached.lombok_jar,

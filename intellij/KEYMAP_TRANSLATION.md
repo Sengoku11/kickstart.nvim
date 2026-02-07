@@ -2,6 +2,11 @@
 
 This file is the audit trail for the generated IdeaVim config at `intellij/.ideavimrc`.
 
+Implementation note:
+- Toggle-like Neovim keys (`<leader>e`, `<leader>tt`, `<leader>gs`, `<leader>st`, `<leader>xx`, etc.) are implemented with a small Vimscript toggle helper that calls `Activate...ToolWindow` and `HideActiveWindow`.
+- This gives close/open toggle behavior on repeated key use, matching Neovim intent.
+- If you manually open/close tool windows with mouse/IDE shortcuts, the internal toggle state can drift; pressing the same toggle key once will re-sync.
+
 Legend:
 - `Exact`: same intent/flow in IntelliJ
 - `Approx`: closest practical IntelliJ equivalent
@@ -37,7 +42,7 @@ Legend:
 | `<leader>/` | `lua/plugins/editor/snacks-picker.lua:86` | Grep | `FindInPath` | Exact |
 | `<leader>:` | `lua/plugins/editor/snacks-picker.lua:87` | Command history | `GotoAction` | Approx |
 | `<leader>n` | `lua/plugins/editor/snacks-picker.lua:88` | Notification history | `Notifications` | Approx |
-| `<leader>e` / `\` | `lua/plugins/editor/snacks-picker.lua:89-90` | Toggle explorer | `ActivateProjectToolWindow` | Approx |
+| `<leader>e` / `\` | `lua/plugins/editor/snacks-picker.lua:89-90` | Toggle explorer | stateful toggle wrapper on `ActivateProjectToolWindow` + `HideActiveWindow` | Approx |
 | `<leader>fb` | `lua/plugins/editor/snacks-picker.lua:93` | Buffers | `RecentFiles` | Approx |
 | `<leader>fc` | `lua/plugins/editor/snacks-picker.lua:94` | Find config file | `GotoFile` | Approx |
 | `<leader>ff` | `lua/plugins/editor/snacks-picker.lua:95` | Find files | `GotoFile` | Exact |
@@ -53,7 +58,7 @@ Legend:
 | `<leader>sA` | `lua/plugins/editor/snacks-picker.lua:119` | Autocmds list | `GotoAction` | Approx |
 | `<leader>sc` | `lua/plugins/editor/snacks-picker.lua:120` | Command history | `GotoAction` | Approx |
 | `<leader>sC` | `lua/plugins/editor/snacks-picker.lua:121` | Commands list | `GotoAction` | Approx |
-| `<leader>sd` | `lua/plugins/editor/snacks-picker.lua:122` | Diagnostics | `ActivateProblemsViewToolWindow` | Approx |
+| `<leader>sd` | `lua/plugins/editor/snacks-picker.lua:122` | Diagnostics | stateful toggle wrapper on `ActivateProblemsViewToolWindow` + `HideActiveWindow` | Approx |
 | `<leader>sD` | `lua/plugins/editor/snacks-picker.lua:123` | Buffer diagnostics | `ShowErrorDescription` | Approx |
 | `<leader>sh` | `lua/plugins/editor/snacks-picker.lua:124` | Help pages | `HelpTopics` | Approx |
 | `<leader>sH` | `lua/plugins/editor/snacks-picker.lua:125` | Highlights | no direct equivalent | N/A |
@@ -71,7 +76,7 @@ Legend:
 | `<leader>uc` | `lua/plugins/editor/snacks-picker.lua:137` | Colorschemes picker | `QuickChangeColorScheme` | Approx |
 | `<leader>ss` | `lua/plugins/editor/snacks-picker.lua:147` | LSP symbols | `FileStructurePopup` | Approx |
 | `<leader>sS` | `lua/plugins/editor/snacks-picker.lua:148` | Workspace symbols | `GotoSymbol` | Exact |
-| `<leader>st` / `<leader>sT` | `lua/plugins/editor/snacks-picker.lua:157-158` | TODO search | `ActivateTODOToolWindow` | Approx |
+| `<leader>st` / `<leader>sT` | `lua/plugins/editor/snacks-picker.lua:157-158` | TODO search | stateful toggle wrapper on `ActivateTODOToolWindow` + `HideActiveWindow` | Approx |
 
 ## 4) LSP / code actions / diagnostics
 
@@ -99,10 +104,10 @@ Legend:
 | Key | Source | Neovim intent | IntelliJ action / mapping | Status |
 |---|---|---|---|---|
 | `[t` / `]t` | `lua/plugins/ui/code.lua:32-33` | Prev/next TODO comment | `FindPrevious` / `FindNext` | Approx |
-| `<leader>xt` / `<leader>xT` | `lua/plugins/ui/code.lua:34-35` | TODO list views | `ActivateTODOToolWindow` | Approx |
+| `<leader>xt` / `<leader>xT` | `lua/plugins/ui/code.lua:34-35` | TODO list views | stateful toggle wrapper on `ActivateTODOToolWindow` + `HideActiveWindow` | Approx |
 | `<leader>cs` | `lua/plugins/ui/code.lua:47` | Symbols panel | `FileStructurePopup` | Approx |
-| `<leader>xx` / `<leader>xX` | `lua/plugins/ui/code.lua:48-49` | Diagnostics panel | `ActivateProblemsViewToolWindow` | Approx |
-| `<leader>xL` / `<leader>xQ` | `lua/plugins/ui/code.lua:50-51` | Loclist/quickfix | `ActivateProblemsViewToolWindow` | Approx |
+| `<leader>xx` / `<leader>xX` | `lua/plugins/ui/code.lua:48-49` | Diagnostics panel | stateful toggle wrapper on `ActivateProblemsViewToolWindow` + `HideActiveWindow` | Approx |
+| `<leader>xL` / `<leader>xQ` | `lua/plugins/ui/code.lua:50-51` | Loclist/quickfix | stateful toggle wrapper on `ActivateProblemsViewToolWindow` + `HideActiveWindow` | Approx |
 | `<leader>cl` | `lua/plugins/ui/code.lua:52` | LSP references/defs panel | `ShowUsages` | Approx |
 | `<leader>snl`/`<leader>snh`/`<leader>sna`/`<leader>snd`/`<leader>snt` | `lua/plugins/ui/noice.lua:18-22` | Message/notification history | `Notifications` | Approx |
 | `<S-Enter>` (cmd mode) | `lua/plugins/ui/noice.lua:17` | Redirect cmdline | no IntelliJ command-line mode | N/A |
@@ -117,7 +122,7 @@ Legend:
 | `<leader>gb` | `lua/plugins/editor/snacks-picker.lua:101` | Git branches | `Git.Branches` | Exact |
 | `<leader>gl` | `lua/plugins/editor/snacks-picker.lua:102` | Git log | `Vcs.ShowTabbedFileHistory` | Approx |
 | `<leader>gL` | `lua/plugins/editor/snacks-picker.lua:103` | Git log line | `Annotate` | Approx |
-| `<leader>gs` | `lua/plugins/editor/snacks-picker.lua:104` | Git status | `ActivateVersionControlToolWindow` | Exact |
+| `<leader>gs` | `lua/plugins/editor/snacks-picker.lua:104` | Git status | stateful toggle wrapper on `ActivateVersionControlToolWindow` + `HideActiveWindow` | Approx |
 | `<leader>gS` | `lua/plugins/editor/snacks-picker.lua:105` | Git stash | `Git.Unstash` | Approx |
 | `<leader>gD` | `lua/plugins/editor/snacks-picker.lua:106` | Git diff hunks | `ShowDiff` | Approx |
 | `<leader>gf` | `lua/plugins/editor/snacks-picker.lua:107` | File git log | `Vcs.ShowTabbedFileHistory` | Approx |
@@ -150,7 +155,7 @@ Legend:
 | `<leader>dk` | `lua/plugins/editor/debug.lua:49` | Step out | `StepOut` | Exact |
 | `<leader>db` | `lua/plugins/editor/debug.lua:56` | Toggle breakpoint | `ToggleLineBreakpoint` | Exact |
 | `<leader>dB` | `lua/plugins/editor/debug.lua:63` | Conditional breakpoint UI | `ViewBreakpoints` | Approx |
-| `<leader>dr` | `lua/plugins/editor/debug.lua:71` | Toggle debug UI | `ActivateDebugToolWindow` | Approx |
+| `<leader>dr` | `lua/plugins/editor/debug.lua:71` | Toggle debug UI | stateful toggle wrapper on `ActivateDebugToolWindow` + `HideActiveWindow` | Approx |
 
 ## 9) Language-specific keys
 

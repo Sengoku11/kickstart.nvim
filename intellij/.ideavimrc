@@ -10,11 +10,48 @@
 let mapleader = " "
 let maplocalleader = " "
 
+" ---------- Stateful toggles ----------
+" IdeaVim/IntelliJ actions don't expose tool-window visibility to Vimscript.
+" We emulate Neovim-like toggles by tracking state for keys that are toggles in your nvim config.
+let g:ba_tw_project_open = 0
+let g:ba_tw_terminal_open = 0
+let g:ba_tw_vcs_open = 0
+let g:ba_tw_todo_open = 0
+let g:ba_tw_debug_open = 0
+let g:ba_tw_problems_open = 0
+
+function! s:toggle_toolwindow(varname, activate_action)
+  if get(g:, a:varname, 0)
+    execute 'action ' . a:activate_action
+    action HideActiveWindow
+    execute 'let g:' . a:varname . ' = 0'
+  else
+    execute 'action ' . a:activate_action
+    execute 'let g:' . a:varname . ' = 1'
+  endif
+endfunction
+
 " ---------- Core ----------
-nnoremap <silent> <C-s> <Action>(SaveAll)
+nmap <silent> <C-s> <Action>(SaveAll)
 nnoremap <silent> <leader>qa :action SaveAll<CR>:action Exit<CR>
-nnoremap <silent> <leader>qf <Action>(ActivateProblemsViewToolWindow)
-nnoremap <silent> dq <Action>(CloseContent)
+nmap <silent> <leader>qf <Action>(ActivateProblemsViewToolWindow)
+nmap <silent> dq <Action>(CloseContent)
+
+" ---------- Move line / selection ----------
+nmap <silent> <A-Up> <Action>(MoveLineUp)
+nmap <silent> <A-Down> <Action>(MoveLineDown)
+nmap <silent> <A-k> <Action>(MoveLineUp)
+nmap <silent> <A-j> <Action>(MoveLineDown)
+
+xmap <silent> <A-Up> <Action>(MoveLineUp)
+xmap <silent> <A-Down> <Action>(MoveLineDown)
+xmap <silent> <A-k> <Action>(MoveLineUp)
+xmap <silent> <A-j> <Action>(MoveLineDown)
+
+imap <silent> <A-Up> <Action>(MoveLineUp)
+imap <silent> <A-Down> <Action>(MoveLineDown)
+imap <silent> <A-k> <Action>(MoveLineUp)
+imap <silent> <A-j> <Action>(MoveLineDown)
 
 " ---------- Windows / tabs ----------
 nnoremap <silent> <C-h> <C-w>h
@@ -22,164 +59,164 @@ nnoremap <silent> <C-j> <C-w>j
 nnoremap <silent> <C-k> <C-w>k
 nnoremap <silent> <C-l> <C-w>l
 
-nnoremap <silent> <leader>bp <Action>(PinActiveTab)
-nnoremap <silent> <leader>bP <Action>(CloseAllEditorsButPinned)
-nnoremap <silent> <leader>br <Action>(CloseAllToTheRight)
-nnoremap <silent> <leader>bl <Action>(CloseAllToTheLeft)
-nnoremap <silent> <S-h> <Action>(PreviousTab)
-nnoremap <silent> <S-l> <Action>(NextTab)
-nnoremap <silent> [b <Action>(PreviousTab)
-nnoremap <silent> ]b <Action>(NextTab)
-nnoremap <silent> [B <Action>(MoveTabLeft)
-nnoremap <silent> ]B <Action>(MoveTabRight)
+nmap <silent> <leader>bp <Action>(PinActiveTab)
+nmap <silent> <leader>bP <Action>(CloseAllEditorsButPinned)
+nmap <silent> <leader>br <Action>(CloseAllToTheRight)
+nmap <silent> <leader>bl <Action>(CloseAllToTheLeft)
+nmap <silent> <S-h> <Action>(PreviousTab)
+nmap <silent> <S-l> <Action>(NextTab)
+nmap <silent> [b <Action>(PreviousTab)
+nmap <silent> ]b <Action>(NextTab)
+nmap <silent> [B <Action>(MoveTabLeft)
+nmap <silent> ]B <Action>(MoveTabRight)
 
 " ---------- Explorer / terminal ----------
-nnoremap <silent> <leader>e <Action>(ActivateProjectToolWindow)
-nnoremap <silent> <Bslash> <Action>(ActivateProjectToolWindow)
-nnoremap <silent> <leader>tt <Action>(ActivateTerminalToolWindow)
-nnoremap <silent> <leader>os <Action>(ActivateVersionControlToolWindow)
-nnoremap <silent> <leader>ob <Action>(RecentFiles)
+nmap <silent> <leader>e :call <SID>toggle_toolwindow('ba_tw_project_open', 'ActivateProjectToolWindow')<CR>
+nmap <silent> <Bslash> :call <SID>toggle_toolwindow('ba_tw_project_open', 'ActivateProjectToolWindow')<CR>
+nmap <silent> <leader>tt :call <SID>toggle_toolwindow('ba_tw_terminal_open', 'ActivateTerminalToolWindow')<CR>
+nmap <silent> <leader>os :call <SID>toggle_toolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
+nmap <silent> <leader>ob <Action>(RecentFiles)
 
 " ---------- Smart finding / search ----------
 " Requested parity:
 " - <leader>/  => project grep alternative
 " - <leader><leader> => smart buffer finder alternative
-nnoremap <silent> <leader><space> <Action>(SearchEverywhere)
-nnoremap <silent> <leader><leader> <Action>(RecentFiles)
-nnoremap <silent> <leader>, <Action>(RecentFiles)
-nnoremap <silent> <leader>/ <Action>(FindInPath)
-nnoremap <silent> <leader>: <Action>(GotoAction)
-nnoremap <silent> <leader>n <Action>(Notifications)
+nmap <silent> <leader><space> <Action>(SearchEverywhere)
+nmap <silent> <leader><leader> <Action>(RecentFiles)
+nmap <silent> <leader>, <Action>(RecentFiles)
+nmap <silent> <leader>/ <Action>(FindInPath)
+nmap <silent> <leader>: <Action>(GotoAction)
+nmap <silent> <leader>n <Action>(Notifications)
 
-nnoremap <silent> <leader>fb <Action>(RecentFiles)
-nnoremap <silent> <leader>fc <Action>(GotoFile)
-nnoremap <silent> <leader>ff <Action>(GotoFile)
-nnoremap <silent> <leader>fg <Action>(RecentChangedFiles)
-nnoremap <silent> <leader>fp <Action>(ManageRecentProjects)
-nnoremap <silent> <leader>fr <Action>(RecentFiles)
+nmap <silent> <leader>fb <Action>(RecentFiles)
+nmap <silent> <leader>fc <Action>(GotoFile)
+nmap <silent> <leader>ff <Action>(GotoFile)
+nmap <silent> <leader>fg <Action>(RecentChangedFiles)
+nmap <silent> <leader>fp <Action>(ManageRecentProjects)
+nmap <silent> <leader>fr <Action>(RecentFiles)
 
-nnoremap <silent> <leader>sb <Action>(Find)
-nnoremap <silent> <leader>sB <Action>(FindInPath)
-nnoremap <silent> <leader>sw <Action>(FindWordAtCaret)
-xnoremap <silent> <leader>sw <Action>(FindInPath)
-nnoremap <silent> <leader>s/ <Action>(Find)
-nnoremap <silent> <leader>sA <Action>(GotoAction)
-nnoremap <silent> <leader>sc <Action>(GotoAction)
-nnoremap <silent> <leader>sC <Action>(GotoAction)
-nnoremap <silent> <leader>sd <Action>(ActivateProblemsViewToolWindow)
-nnoremap <silent> <leader>sD <Action>(ShowErrorDescription)
-nnoremap <silent> <leader>sh <Action>(HelpTopics)
-nnoremap <silent> <leader>sj <Action>(RecentLocations)
-nnoremap <silent> <leader>sk <Action>(Keymap)
-nnoremap <silent> <leader>sl <Action>(ActivateProblemsViewToolWindow)
-nnoremap <silent> <leader>sm <Action>(ShowBookmarks)
-nnoremap <silent> <leader>sp <Action>(SearchEverywhere)
-nnoremap <silent> <leader>sP <Action>(GotoAction)
-nnoremap <silent> <leader>sq <Action>(ActivateProblemsViewToolWindow)
-nnoremap <silent> <leader>s. <Action>(RecentFiles)
-nnoremap <silent> <leader>su <Action>(LocalHistory.ShowHistory)
-nnoremap <silent> <leader>ss <Action>(FileStructurePopup)
-nnoremap <silent> <leader>sS <Action>(GotoSymbol)
-nnoremap <silent> <leader>st <Action>(ActivateTODOToolWindow)
-nnoremap <silent> <leader>sT <Action>(ActivateTODOToolWindow)
+nmap <silent> <leader>sb <Action>(Find)
+nmap <silent> <leader>sB <Action>(FindInPath)
+nmap <silent> <leader>sw <Action>(FindWordAtCaret)
+xmap <silent> <leader>sw <Action>(FindInPath)
+nmap <silent> <leader>s/ <Action>(Find)
+nmap <silent> <leader>sA <Action>(GotoAction)
+nmap <silent> <leader>sc <Action>(GotoAction)
+nmap <silent> <leader>sC <Action>(GotoAction)
+nmap <silent> <leader>sd :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>sD <Action>(ShowErrorDescription)
+nmap <silent> <leader>sh <Action>(HelpTopics)
+nmap <silent> <leader>sj <Action>(RecentLocations)
+nmap <silent> <leader>sk <Action>(Keymap)
+nmap <silent> <leader>sl <Action>(ActivateProblemsViewToolWindow)
+nmap <silent> <leader>sm <Action>(ShowBookmarks)
+nmap <silent> <leader>sp <Action>(SearchEverywhere)
+nmap <silent> <leader>sP <Action>(GotoAction)
+nmap <silent> <leader>sq <Action>(ActivateProblemsViewToolWindow)
+nmap <silent> <leader>s. <Action>(RecentFiles)
+nmap <silent> <leader>su <Action>(LocalHistory.ShowHistory)
+nmap <silent> <leader>ss <Action>(FileStructurePopup)
+nmap <silent> <leader>sS <Action>(GotoSymbol)
+nmap <silent> <leader>st :call <SID>toggle_toolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
+nmap <silent> <leader>sT :call <SID>toggle_toolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
 
 " ---------- LSP / diagnostics / refactor ----------
-nnoremap <silent> ga <Action>(ShowIntentionActions)
-xnoremap <silent> ga <Action>(ShowIntentionActions)
-nnoremap <silent> gd <Action>(GotoDeclaration)
-nnoremap <silent> gD <Action>(GotoTypeDeclaration)
-nnoremap <silent> gr <Action>(ShowUsages)
-nnoremap <silent> gI <Action>(GotoImplementation)
-nnoremap <silent> gy <Action>(GotoTypeDeclaration)
+nmap <silent> ga <Action>(ShowIntentionActions)
+xmap <silent> ga <Action>(ShowIntentionActions)
+nmap <silent> gd <Action>(GotoDeclaration)
+nmap <silent> gD <Action>(GotoTypeDeclaration)
+nmap <silent> gr <Action>(ShowUsages)
+nmap <silent> gI <Action>(GotoImplementation)
+nmap <silent> gy <Action>(GotoTypeDeclaration)
 
-nnoremap <silent> <leader>rn <Action>(RenameElement)
-nnoremap <silent> <leader>bF <Action>(ReformatCode)
-nnoremap <silent> <leader>rw <Action>(Replace)
-nnoremap <silent> <leader>r <Action>(Replace)
-nnoremap <silent> <leader>sr <Action>(ReplaceInPath)
-xnoremap <silent> <leader>sr <Action>(ReplaceInPath)
+nmap <silent> <leader>rn <Action>(RenameElement)
+nmap <silent> <leader>bF <Action>(ReformatCode)
+nmap <silent> <leader>rw <Action>(Replace)
+nmap <silent> <leader>r <Action>(Replace)
+nmap <silent> <leader>sr <Action>(ReplaceInPath)
+xmap <silent> <leader>sr <Action>(ReplaceInPath)
 
-nnoremap <silent> ]d <Action>(GotoNextError)
-nnoremap <silent> [d <Action>(GotoPreviousError)
-nnoremap <silent> ]h <Action>(GotoNextError)
-nnoremap <silent> [h <Action>(GotoPreviousError)
-nnoremap <silent> <leader>k <Action>(ShowErrorDescription)
-nnoremap <silent> <C-w>d <Action>(ShowErrorDescription)
-nnoremap <silent> <leader>th <Action>(ToggleInlayHintsGloballyAction)
+nmap <silent> ]d <Action>(GotoNextError)
+nmap <silent> [d <Action>(GotoPreviousError)
+nmap <silent> ]h <Action>(GotoNextError)
+nmap <silent> [h <Action>(GotoPreviousError)
+nmap <silent> <leader>k <Action>(ShowErrorDescription)
+nmap <silent> <C-w>d <Action>(ShowErrorDescription)
+nmap <silent> <leader>th <Action>(ToggleInlayHintsGloballyAction)
 
-nnoremap <silent> [t <Action>(FindPrevious)
-nnoremap <silent> ]t <Action>(FindNext)
-nnoremap <silent> <leader>cs <Action>(FileStructurePopup)
-nnoremap <silent> <leader>cl <Action>(ShowUsages)
-nnoremap <silent> <leader>xx <Action>(ActivateProblemsViewToolWindow)
-nnoremap <silent> <leader>xX <Action>(ActivateProblemsViewToolWindow)
-nnoremap <silent> <leader>xL <Action>(ActivateProblemsViewToolWindow)
-nnoremap <silent> <leader>xQ <Action>(ActivateProblemsViewToolWindow)
-nnoremap <silent> <leader>xt <Action>(ActivateTODOToolWindow)
-nnoremap <silent> <leader>xT <Action>(ActivateTODOToolWindow)
-nnoremap <silent> <leader>uc <Action>(QuickChangeColorScheme)
+nmap <silent> [t <Action>(FindPrevious)
+nmap <silent> ]t <Action>(FindNext)
+nmap <silent> <leader>cs <Action>(FileStructurePopup)
+nmap <silent> <leader>cl <Action>(ShowUsages)
+nmap <silent> <leader>xx :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>xX :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>xL :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>xQ :call <SID>toggle_toolwindow('ba_tw_problems_open', 'ActivateProblemsViewToolWindow')<CR>
+nmap <silent> <leader>xt :call <SID>toggle_toolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
+nmap <silent> <leader>xT :call <SID>toggle_toolwindow('ba_tw_todo_open', 'ActivateTODOToolWindow')<CR>
+nmap <silent> <leader>uc <Action>(QuickChangeColorScheme)
 
 " ---------- Git ----------
-nnoremap <silent> <leader>gg <Action>(Vcs.QuickListPopupAction)
-nnoremap <silent> <leader>gp <Action>(OpenInBrowser)
-nnoremap <silent> <leader>gb <Action>(Git.Branches)
-nnoremap <silent> <leader>gl <Action>(Vcs.ShowTabbedFileHistory)
-nnoremap <silent> <leader>gL <Action>(Annotate)
-nnoremap <silent> <leader>gs <Action>(ActivateVersionControlToolWindow)
-nnoremap <silent> <leader>gS <Action>(Git.Unstash)
-nnoremap <silent> <leader>gD <Action>(ShowDiff)
-nnoremap <silent> <leader>gf <Action>(Vcs.ShowTabbedFileHistory)
-nnoremap <silent> <leader>gc <Action>(CheckinProject)
-nnoremap <silent> <leader>gac <Action>(CheckinProject)
-nnoremap <silent> <leader>gd <Action>(ShowDiff)
+nmap <silent> <leader>gg <Action>(Vcs.QuickListPopupAction)
+nmap <silent> <leader>gp <Action>(OpenInBrowser)
+nmap <silent> <leader>gb <Action>(Git.Branches)
+nmap <silent> <leader>gl <Action>(Vcs.ShowTabbedFileHistory)
+nmap <silent> <leader>gL <Action>(Annotate)
+nmap <silent> <leader>gs :call <SID>toggle_toolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
+nmap <silent> <leader>gS <Action>(Git.Unstash)
+nmap <silent> <leader>gD <Action>(ShowDiff)
+nmap <silent> <leader>gf <Action>(Vcs.ShowTabbedFileHistory)
+nmap <silent> <leader>gc <Action>(CheckinProject)
+nmap <silent> <leader>gac <Action>(CheckinProject)
+nmap <silent> <leader>gd <Action>(ShowDiff)
 
-nnoremap <silent> [c <Action>(VcsShowPrevChangeMarker)
-nnoremap <silent> ]c <Action>(VcsShowNextChangeMarker)
+nmap <silent> [c <Action>(VcsShowPrevChangeMarker)
+nmap <silent> ]c <Action>(VcsShowNextChangeMarker)
 
-nnoremap <silent> <leader>bb <Action>(Annotate)
-nnoremap <silent> <leader>tb <Action>(Annotate)
-nnoremap <silent> <leader>tw <Action>(ShowDiff)
+nmap <silent> <leader>bb <Action>(Annotate)
+nmap <silent> <leader>tb <Action>(Annotate)
+nmap <silent> <leader>tw <Action>(ShowDiff)
 
-nnoremap <silent> <leader>hs <Action>(CheckinProject)
-xnoremap <silent> <leader>hs <Action>(CheckinProject)
-nnoremap <silent> <leader>hr <Action>(Rollback)
-xnoremap <silent> <leader>hr <Action>(Rollback)
-nnoremap <silent> <leader>hS <Action>(CheckinProject)
+nmap <silent> <leader>hs <Action>(CheckinProject)
+xmap <silent> <leader>hs <Action>(CheckinProject)
+nmap <silent> <leader>hr <Action>(Rollback)
+xmap <silent> <leader>hr <Action>(Rollback)
+nmap <silent> <leader>hS <Action>(CheckinProject)
 nnoremap <silent> <leader>hu u
-nnoremap <silent> <leader>hR <Action>(Rollback)
-nnoremap <silent> <leader>hh <Action>(ShowDiff)
-nnoremap <silent> <leader>hi <Action>(ShowDiff)
-nnoremap <silent> <leader>hb <Action>(Annotate)
-nnoremap <silent> <leader>hB <Action>(Vcs.ShowTabbedFileHistory)
-nnoremap <silent> <leader>hd <Action>(ShowDiff)
+nmap <silent> <leader>hR <Action>(Rollback)
+nmap <silent> <leader>hh <Action>(ShowDiff)
+nmap <silent> <leader>hi <Action>(ShowDiff)
+nmap <silent> <leader>hb <Action>(Annotate)
+nmap <silent> <leader>hB <Action>(Vcs.ShowTabbedFileHistory)
+nmap <silent> <leader>hd <Action>(ShowDiff)
 
 " ---------- Debug ----------
-nnoremap <silent> <leader>dc <Action>(Debug)
-nnoremap <silent> <leader>dj <Action>(StepInto)
-nnoremap <silent> <leader>dl <Action>(StepOver)
-nnoremap <silent> <leader>dk <Action>(StepOut)
-nnoremap <silent> <leader>db <Action>(ToggleLineBreakpoint)
-nnoremap <silent> <leader>dB <Action>(ViewBreakpoints)
-nnoremap <silent> <leader>dr <Action>(ActivateDebugToolWindow)
+nmap <silent> <leader>dc <Action>(Debug)
+nmap <silent> <leader>dj <Action>(StepInto)
+nmap <silent> <leader>dl <Action>(StepOver)
+nmap <silent> <leader>dk <Action>(StepOut)
+nmap <silent> <leader>db <Action>(ToggleLineBreakpoint)
+nmap <silent> <leader>dB <Action>(ViewBreakpoints)
+nmap <silent> <leader>dr :call <SID>toggle_toolwindow('ba_tw_debug_open', 'ActivateDebugToolWindow')<CR>
 
 " Rust / DAML approximations
-nnoremap <silent> <leader>cR <Action>(ShowIntentionActions)
-nnoremap <silent> <leader>gt <Action>(Run)
+nmap <silent> <leader>cR <Action>(ShowIntentionActions)
+nmap <silent> <leader>gt <Action>(Run)
 
 " ---------- Session / history / misc ----------
-nnoremap <silent> <leader>uu <Action>(LocalHistory.ShowHistory)
-nnoremap <silent> <leader>qs <Action>(ManageRecentProjects)
-nnoremap <silent> <leader>qS <Action>(ManageRecentProjects)
-nnoremap <silent> <leader>ql <Action>(ManageRecentProjects)
-nnoremap <silent> <leader>qd <Action>(ManageRecentProjects)
-nnoremap <silent> <leader>lz <Action>(ShowSettings)
+nmap <silent> <leader>uu <Action>(LocalHistory.ShowHistory)
+nmap <silent> <leader>qs <Action>(ManageRecentProjects)
+nmap <silent> <leader>qS <Action>(ManageRecentProjects)
+nmap <silent> <leader>ql <Action>(ManageRecentProjects)
+nmap <silent> <leader>qd <Action>(ManageRecentProjects)
+nmap <silent> <leader>lz <Action>(ShowSettings)
 
 " ---------- Noice-style message history approximations ----------
-nnoremap <silent> <leader>snl <Action>(Notifications)
-nnoremap <silent> <leader>snh <Action>(Notifications)
-nnoremap <silent> <leader>sna <Action>(Notifications)
-nnoremap <silent> <leader>snd <Action>(Notifications)
-nnoremap <silent> <leader>snt <Action>(Notifications)
+nmap <silent> <leader>snl <Action>(Notifications)
+nmap <silent> <leader>snh <Action>(Notifications)
+nmap <silent> <leader>sna <Action>(Notifications)
+nmap <silent> <leader>snd <Action>(Notifications)
+nmap <silent> <leader>snt <Action>(Notifications)
 
 " ---------- Not ported intentionally ----------
 " <leader>s (operator-grep by motion) has no equivalent operator model in IntelliJ.

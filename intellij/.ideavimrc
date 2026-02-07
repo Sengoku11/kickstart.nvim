@@ -40,6 +40,7 @@ function! BaToggleProjectWindow() abort
     action ActivateProjectToolWindow
     let g:ba_tw_project_open = 1
   endif
+  action FocusEditor
 endfunction
 
 function! BaToggleTerminalWindow() abort
@@ -51,6 +52,7 @@ function! BaToggleTerminalWindow() abort
     action ActivateTerminalToolWindow
     let g:ba_tw_terminal_open = 1
   endif
+  action FocusEditor
 endfunction
 
 " ---------- Core ----------

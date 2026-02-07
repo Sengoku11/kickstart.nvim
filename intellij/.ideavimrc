@@ -10,12 +10,6 @@
 let mapleader = " "
 let maplocalleader = " "
 
-" Let IdeaVim handle split-navigation keys (prevents IDE keymap conflicts).
-silent! sethandler <C-h> a:vim
-silent! sethandler <C-j> a:vim
-silent! sethandler <C-k> a:vim
-silent! sethandler <C-l> a:vim
-
 " ---------- Stateful toggles ----------
 " IdeaVim/IntelliJ actions don't expose tool-window visibility to Vimscript.
 " We emulate Neovim-like toggles by tracking state for keys that are toggles in your nvim config.
@@ -47,10 +41,6 @@ function! BaToggleToolwindow(varname, activate_action) abort
 endfunction
 
 function! BaToggleProjectWindow() abort
-  " Some IDEs expose a dedicated toggle action.
-  if BaRunAction('ProjectViewToggle')
-    return
-  endif
   call BaToggleToolwindow('ba_tw_project_open', 'ActivateProjectToolWindow')
 endfunction
 
@@ -95,10 +85,10 @@ imap <silent> <A-k> <Action>(MoveLineUp)
 imap <silent> <A-j> <Action>(MoveLineDown)
 
 " ---------- Windows / tabs ----------
-nnoremap <silent> <C-h> <C-w>h
-nnoremap <silent> <C-j> <C-w>j
-nnoremap <silent> <C-k> <C-w>k
-nnoremap <silent> <C-l> <C-w>l
+nmap <silent> <C-h> <Action>(SwitchLeft)
+nmap <silent> <C-j> <Action>(SwitchDown)
+nmap <silent> <C-k> <Action>(SwitchUp)
+nmap <silent> <C-l> <Action>(SwitchRight)
 
 nmap <silent> <leader>bp <Action>(PinActiveTab)
 nmap <silent> <leader>bP <Action>(CloseAllEditorsButPinned)
@@ -112,8 +102,8 @@ nmap <silent> [B <Action>(MoveTabLeft)
 nmap <silent> ]B <Action>(MoveTabRight)
 
 " ---------- Explorer / terminal ----------
-nmap <silent> <leader>e <Action>(ProjectViewToggle)
-nmap <silent> <Bslash> <Action>(ProjectViewToggle)
+nmap <silent> <leader>e :call BaToggleProjectWindow()<CR>
+nmap <silent> <Bslash> :call BaToggleProjectWindow()<CR>
 nmap <silent> <leader>tt :action ActivateTerminalToolWindow<CR>:action Terminal.OpenInTerminal<CR>
 nmap <silent> <leader>os :call BaToggleToolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
 nmap <silent> <leader>ob <Action>(RecentFiles)

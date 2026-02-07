@@ -5,6 +5,7 @@ local workspace_build_state = {}
 local generated_source_attach_state = {}
 local should_apply_active_profiles
 local should_disable_ge_maven_extension
+local JDT_SETTING_CLASSPATH_ENTRIES = 'org.eclipse.jdt.ls.core.classpathEntries'
 
 local function env_truthy(name)
   local value = vim.env[name]
@@ -766,9 +767,11 @@ local function detect_lifecycle_mappings_file(root_dir)
     return discovered
   end
 
-  local fallback = vim.fn.stdpath 'config' .. '/m2e-lifecycle-mapping.xml'
-  if vim.fn.filereadable(fallback) == 1 then
-    return fallback
+  if env_truthy 'JDTLS_USE_GLOBAL_M2E_LIFECYCLE_MAPPINGS' then
+    local fallback = vim.fn.stdpath 'config' .. '/m2e-lifecycle-mapping.xml'
+    if vim.fn.filereadable(fallback) == 1 then
+      return fallback
+    end
   end
 
   return nil
@@ -1000,9 +1003,9 @@ local function build_maven_sync_cmd(cached)
     append_develocity_disable_flags(cmd)
   end
 
-  local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources process-resources compile')
+  local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources')
   if vim.tbl_isempty(goals) then
-    goals = { 'generate-sources', 'process-resources' }
+    goals = { 'generate-sources' }
   end
   vim.list_extend(cmd, goals)
 
@@ -1095,15 +1098,161 @@ local function list_generated_source_dirs(root_dir)
   return dirs
 end
 
+local function list_generated_source_dirs_for_buffer(root_dir, bufnr)
+  bufnr = bufnr or 0
+  local bufname = vim.api.nvim_buf_get_name(bufnr)
+  if bufname == '' then
+    return {}
+  end
+
+  local module_root = vim.fs.root(bufname, { 'pom.xml' }) or root_dir
+  if not module_root or module_root == '' then
+    return {}
+  end
+  module_root = vim.fs.normalize(module_root)
+
+  local out = {}
+  for _, dir in ipairs(list_generated_source_dirs(root_dir)) do
+    if dir == module_root or dir:find(module_root .. '/', 1, true) == 1 then
+      table.insert(out, dir)
+    end
+  end
+  return out, module_root
+end
+
+local function request_project_settings(client, bufnr, uri, keys, cb)
+  client.request('workspace/executeCommand', {
+    command = 'java.project.getSettings',
+    arguments = { uri, keys },
+  }, function(err, result)
+    cb(err, result)
+  end, bufnr)
+end
+
+local function normalize_entry_path(path)
+  if not path or path == '' then
+    return nil
+  end
+  return path:gsub('\\', '/')
+end
+
+local function ensure_generated_sources_via_classpath_update(root_dir, bufnr)
+  bufnr = bufnr or 0
+  local source_dirs, module_root = list_generated_source_dirs_for_buffer(root_dir, bufnr)
+  if vim.tbl_isempty(source_dirs) or not module_root then
+    return
+  end
+
+  local state = generated_source_attach_state[root_dir] or {}
+  if state.__classpath_patch_running then
+    return
+  end
+  state.__classpath_patch_running = true
+  generated_source_attach_state[root_dir] = state
+
+  local uri = vim.uri_from_bufnr(bufnr)
+
+  for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
+    if client and client.config and client.config.root_dir == root_dir then
+      request_project_settings(client, bufnr, uri, { JDT_SETTING_CLASSPATH_ENTRIES }, function(err, settings)
+        local cur_state = generated_source_attach_state[root_dir] or {}
+        local done = function(patch)
+          cur_state.__classpath_patch_running = false
+          cur_state.__classpath_patch = patch
+          generated_source_attach_state[root_dir] = cur_state
+        end
+
+        if err then
+          done {
+            error = err.message or vim.inspect(err),
+            added = {},
+          }
+          return
+        end
+
+        local classpath_entries = {}
+        if type(settings) == 'table' then
+          local raw_entries = settings[JDT_SETTING_CLASSPATH_ENTRIES] or settings.classpathEntries
+          if type(raw_entries) == 'table' then
+            classpath_entries = vim.deepcopy(raw_entries)
+          end
+        end
+
+        if vim.tbl_isempty(classpath_entries) then
+          done {
+            error = 'java.project.getSettings did not return classpath entries',
+            added = {},
+          }
+          return
+        end
+
+        local existing = {}
+        for _, entry in ipairs(classpath_entries) do
+          if type(entry) == 'table' and tonumber(entry.kind) == 3 then
+            local normalized = normalize_entry_path(entry.path)
+            if normalized then
+              existing[normalized] = true
+            end
+          end
+        end
+
+        local added = {}
+        for _, source_dir in ipairs(source_dirs) do
+          local rel = vim.fs.relpath(source_dir, module_root)
+          if rel and rel ~= '' then
+            rel = normalize_entry_path(rel)
+            if rel and not rel:find('^%.%./') and not existing[rel] then
+              table.insert(classpath_entries, {
+                kind = 3,
+                path = rel,
+                output = nil,
+                attributes = {},
+              })
+              existing[rel] = true
+              table.insert(added, rel)
+            end
+          end
+        end
+
+        if vim.tbl_isempty(added) then
+          done {
+            error = nil,
+            added = {},
+            message = 'No missing generated source entries to patch',
+          }
+          return
+        end
+
+        client.request('workspace/executeCommand', {
+          command = 'java.project.updateClassPaths',
+          arguments = {
+            uri,
+            {
+              classpathEntries = classpath_entries,
+            },
+          },
+        }, function(update_err)
+          done {
+            error = update_err and (update_err.message or vim.inspect(update_err)) or nil,
+            added = added,
+            module_root = module_root,
+          }
+        end, bufnr)
+      end)
+    end
+  end
+end
+
 local function attach_generated_sources(root_dir, bufnr)
   bufnr = bufnr or 0
-  local source_dirs = list_generated_source_dirs(root_dir)
+  local source_dirs = list_generated_source_dirs_for_buffer(root_dir, bufnr)
   if vim.tbl_isempty(source_dirs) then
     return
   end
 
   local state = generated_source_attach_state[root_dir] or {}
   if state.__unsupported then
+    ensure_generated_sources_via_classpath_update(root_dir, bufnr)
     return
   end
   for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
@@ -1122,6 +1271,9 @@ local function attach_generated_sources(root_dir, bufnr)
           local message = type(result) == 'table' and result.message or ''
           if type(message) == 'string' and message:find('Unsupported operation', 1, true) then
             state.__unsupported = true
+            generated_source_attach_state[root_dir] = state
+            ensure_generated_sources_via_classpath_update(root_dir, bufnr)
+            return
           end
           generated_source_attach_state[root_dir] = state
         end, bufnr)
@@ -1328,12 +1480,15 @@ local function run_root_cause_probe(query)
         request_list_source_paths(client, bufnr, uri, function(sp_err, source_paths, source_paths_raw)
           local attach_state = generated_source_attach_state[root_dir] or {}
           local attach_preview = {}
+          local classpath_patch = attach_state.__classpath_patch
           local n = 0
           for key, value in pairs(attach_state) do
-            n = n + 1
-            attach_preview[key] = value
-            if n >= 8 then
-              break
+            if type(key) ~= 'string' or key:sub(1, 2) ~= '__' then
+              n = n + 1
+              attach_preview[key] = value
+              if n >= 8 then
+                break
+              end
             end
           end
           vim.schedule(function()
@@ -1361,6 +1516,7 @@ local function run_root_cause_probe(query)
               '- generated_dirs_count: `' .. tostring(#generated_dirs) .. '`',
               '- pre_add_to_source_path_error: `' .. tostring(pre_attach_error or 'nil') .. '`',
               '- pre_add_to_source_path_result: `' .. tostring(pre_attach_result and vim.inspect(pre_attach_result) or 'nil') .. '`',
+              '- classpath_patch: `' .. tostring(classpath_patch and vim.inspect(classpath_patch) or 'nil') .. '`',
               '',
               '## Generated Dirs',
             }
@@ -1403,6 +1559,12 @@ local function run_root_cause_probe(query)
           table.insert(report, '## addToSourcePath Recent Results')
           table.insert(report, '```lua')
           table.insert(report, vim.inspect(attach_preview))
+          table.insert(report, '```')
+
+          table.insert(report, '')
+          table.insert(report, '## updateClassPaths Patch Result')
+          table.insert(report, '```lua')
+          table.insert(report, vim.inspect(classpath_patch))
           table.insert(report, '```')
 
           table.insert(report, '')
@@ -1485,16 +1647,17 @@ local function run_maven_sync(root_dir, cached, opts)
 
       if result and result.code == 0 then
         vim.notify('[java] Maven sync finished. Refreshing JDTLS import/diagnostics...', vim.log.levels.INFO)
-        refresh_jdtls_import(root_dir)
-        refresh_jdtls_projects(root_dir, 0)
-        attach_generated_sources(root_dir, 0)
       else
         local msg = '[java] Maven sync failed'
         if stderr_first ~= '' then
           msg = msg .. ': ' .. stderr_first
         end
-        vim.notify(msg, vim.log.levels.WARN)
+        vim.notify(msg .. '. Refreshing project model anyway for partial outputs.', vim.log.levels.WARN)
       end
+
+      refresh_jdtls_import(root_dir)
+      refresh_jdtls_projects(root_dir, 0)
+      attach_generated_sources(root_dir, 0)
     end)
   end)
 end
@@ -1692,11 +1855,17 @@ local function build_java_settings(base_settings, cached)
     local allowed = { ignore = true, warn = true, error = true, execute = true }
     explicit_mojo_action = allowed[explicit_mojo_action] and explicit_mojo_action or nil
   end
-  settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction
-    or explicit_mojo_action
-    or 'ignore'
-  settings.java.configuration.maven.notCoveredPluginExecutionSeverity = settings.java.configuration.maven.notCoveredPluginExecutionSeverity
-    or 'ignore'
+  if explicit_mojo_action then
+    settings.java.configuration.maven.defaultMojoExecutionAction = explicit_mojo_action
+  end
+  local explicit_not_covered_severity = vim.env.JDTLS_M2E_NOT_COVERED_PLUGIN_SEVERITY
+    or vim.env.JDTLS_M2E_NOT_COVERED_SEVERITY
+  if explicit_not_covered_severity and explicit_not_covered_severity ~= '' then
+    local allowed = { ignore = true, warning = true, error = true }
+    if allowed[explicit_not_covered_severity] then
+      settings.java.configuration.maven.notCoveredPluginExecutionSeverity = explicit_not_covered_severity
+    end
+  end
 
   if cached.settings_xml then
     settings.java.configuration.maven.userSettings = cached.settings_xml
@@ -2000,7 +2169,7 @@ return {
           run_maven_sync(root_dir, cached, { force = command_opts.bang })
         end, {
           bang = true,
-          desc = 'Run Maven generate-sources/process-resources for current Java root (! to force rerun)',
+          desc = 'Run Maven generate-sources for current Java root (! to force rerun)',
         })
       end
 
@@ -2045,9 +2214,9 @@ return {
           attach_generated_sources(root_dir, 0)
           refresh_jdtls_projects(root_dir, 0)
           refresh_jdtls_import(root_dir)
-          vim.notify('[java] Requested JDTLS to add generated source directories to source path.', vim.log.levels.INFO)
+          vim.notify('[java] Requested JDTLS to include generated source directories (source path/classpath fallback).', vim.log.levels.INFO)
         end, {
-          desc = 'Add target/generated-sources directories to JDTLS source path and refresh import',
+          desc = 'Attach target/generated-sources via JDTLS source path or classpath fallback and refresh import',
         })
       end
 

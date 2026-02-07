@@ -42,24 +42,5 @@
       </action>
     </pluginExecution>
 
-    <!--
-      OpenAPI generation is handled by CLI Maven sync/build in this setup.
-      Ignore m2e execution during IDE import to keep project model resilient in
-      constrained/proxied environments.
-    -->
-    <pluginExecution>
-      <pluginExecutionFilter>
-        <groupId>org.openapitools</groupId>
-        <artifactId>openapi-generator-maven-plugin</artifactId>
-        <versionRange>[0,)</versionRange>
-        <goals>
-          <goal>generate</goal>
-        </goals>
-      </pluginExecutionFilter>
-      <action>
-        <ignore />
-      </action>
-    </pluginExecution>
-
   </pluginExecutions>
 </lifecycleMappingMetadata>

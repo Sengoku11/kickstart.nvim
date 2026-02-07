@@ -10,6 +10,15 @@
 let mapleader = " "
 let maplocalleader = " "
 
+" Enable IdeaVim NERDTree support in the IntelliJ Project panel.
+" This gives Vim-style navigation in Project view instead of raw Speed Search typing.
+Plug 'preservim/nerdtree'
+set NERDTree
+let g:NERDTreeMapActivateNode = 'l'
+let g:NERDTreeMapCloseDir = 'h'
+let g:NERDTreeMapRefreshRoot = 'R'
+let g:NERDTreeMapFind = '/'
+
 " ---------- Stateful toggles ----------
 " IdeaVim/IntelliJ actions don't expose tool-window visibility to Vimscript.
 " We emulate Neovim-like toggles by tracking state for keys that are toggles in your nvim config.
@@ -97,11 +106,15 @@ nmap <silent> ]B <Action>(MoveTabRight)
 " ---------- Explorer / terminal ----------
 silent! nunmap <Space>e
 silent! nunmap <Space>tt
-nnoremap <silent> <Space>e :if g:ba_tw_project_open <Bar> action ActivateProjectToolWindow <Bar> action HideActiveWindow <Bar> let g:ba_tw_project_open = 0 <Bar> else <Bar> action ActivateProjectToolWindow <Bar> let g:ba_tw_project_open = 1 <Bar> endif <Bar> action FocusEditor<CR>
 nnoremap <silent> <Space>tt :if g:ba_tw_terminal_open <Bar> action ActivateTerminalToolWindow <Bar> action HideActiveWindow <Bar> let g:ba_tw_terminal_open = 0 <Bar> else <Bar> action ActivateTerminalToolWindow <Bar> let g:ba_tw_terminal_open = 1 <Bar> endif <Bar> action FocusEditor<CR>
-nnoremap <silent> <leader>e :if g:ba_tw_project_open <Bar> action ActivateProjectToolWindow <Bar> action HideActiveWindow <Bar> let g:ba_tw_project_open = 0 <Bar> else <Bar> action ActivateProjectToolWindow <Bar> let g:ba_tw_project_open = 1 <Bar> endif <Bar> action FocusEditor<CR>
-nnoremap <silent> <Bslash> :if g:ba_tw_project_open <Bar> action ActivateProjectToolWindow <Bar> action HideActiveWindow <Bar> let g:ba_tw_project_open = 0 <Bar> else <Bar> action ActivateProjectToolWindow <Bar> let g:ba_tw_project_open = 1 <Bar> endif <Bar> action FocusEditor<CR>
 nnoremap <silent> <leader>tt :if g:ba_tw_terminal_open <Bar> action ActivateTerminalToolWindow <Bar> action HideActiveWindow <Bar> let g:ba_tw_terminal_open = 0 <Bar> else <Bar> action ActivateTerminalToolWindow <Bar> let g:ba_tw_terminal_open = 1 <Bar> endif <Bar> action FocusEditor<CR>
+nnoremap <silent> <Space>e :NERDTreeToggle<CR>
+nnoremap <silent> <leader>e :NERDTreeToggle<CR>
+nnoremap <silent> <Bslash> :NERDTreeToggle<CR>
+nnoremap <silent> <leader>ef :NERDTreeFind<CR>
+nnoremap <silent> <leader>ee :NERDTreeFocus<CR>
+nnoremap <silent> <leader>ec :NERDTreeClose<CR>
+nnoremap <silent> <leader>er :NERDTreeRefreshRoot<CR>
 nmap <silent> <leader>os :call BaToggleToolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
 nmap <silent> <leader>ob <Action>(RecentFiles)
 

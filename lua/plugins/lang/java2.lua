@@ -2,6 +2,7 @@ local java_filetypes = { 'java' }
 local project_cache = {}
 local maven_sync_state = {}
 local workspace_build_state = {}
+local should_apply_active_profiles
 
 local function env_truthy(name)
   local value = vim.env[name]
@@ -106,38 +107,114 @@ local function root_markers()
   }
 end
 
-local function detect_root_dir(path)
-  local root_mode = (vim.env.JDTLS_ROOT_MODE or 'module'):lower()
-  local file_dir = vim.fs.dirname(path)
-  local maven_root = nil
+local function detect_maven_project_root(path)
+  local module_root = vim.fs.root(path, { 'pom.xml' })
+  if not module_root then
+    return nil, nil
+  end
 
-  local module_root = vim.fs.root(path, {
+  local project_root = module_root
+
+  each_parent_dir(vim.fs.dirname(module_root), function(dir)
+    local pom = dir .. '/pom.xml'
+    if vim.fn.filereadable(pom) ~= 1 then
+      return false
+    end
+
+    local content = read_file(pom)
+    if not content then
+      return false
+    end
+
+    local rel_module = vim.fs.relpath(dir, project_root)
+    if not rel_module or rel_module == '' then
+      return false
+    end
+    rel_module = rel_module:gsub('\\', '/')
+
+    local has_modules = false
+    local contains_current = false
+    for modules_block in content:gmatch '<modules>(.-)</modules>' do
+      has_modules = true
+      for module in modules_block:gmatch '<module>%s*(.-)%s*</module>' do
+        local normalized = vim.trim(module):gsub('\\', '/')
+        if normalized == rel_module or rel_module:find(normalized .. '/', 1, true) == 1 then
+          contains_current = true
+          break
+        end
+      end
+      if contains_current then
+        break
+      end
+    end
+
+    if has_modules and contains_current then
+      project_root = dir
+    end
+
+    return false
+  end)
+
+  return project_root, module_root
+end
+
+local function detect_maven_tooling_root(path)
+  local file_dir = vim.fs.dirname(path)
+  local tooling_root = nil
+  each_parent_dir(file_dir, function(dir)
+    if vim.fn.isdirectory(dir .. '/.mvn') == 1 or vim.fn.filereadable(dir .. '/mvnw') == 1 then
+      tooling_root = dir
+    end
+    return false
+  end)
+  return tooling_root
+end
+
+local function detect_root_dir(path)
+  local root_mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower()
+  local project_root, maven_module_root = detect_maven_project_root(path)
+  local tooling_root = detect_maven_tooling_root(path)
+  local module_root = maven_module_root or vim.fs.root(path, {
     'pom.xml',
     'build.gradle',
     'build.gradle.kts',
   })
 
-  each_parent_dir(file_dir, function(dir)
-    if vim.fn.isdirectory(dir .. '/.mvn') == 1 or vim.fn.filereadable(dir .. '/mvnw') == 1 then
-      maven_root = dir
-      return true
+  if root_mode == 'repo' or root_mode == 'project' then
+    if project_root then
+      return project_root
     end
-    return false
-  end)
-
-  if root_mode == 'repo' then
-    if maven_root then
-      return maven_root
+    if tooling_root and vim.fn.filereadable(tooling_root .. '/pom.xml') == 1 then
+      return tooling_root
     end
     if module_root then
       return module_root
+    end
+    if tooling_root then
+      return tooling_root
+    end
+  elseif root_mode == 'module' then
+    if module_root then
+      return module_root
+    end
+    if project_root then
+      return project_root
+    end
+    if tooling_root then
+      return tooling_root
     end
   else
+    if project_root then
+      return project_root
+    end
+    if tooling_root and vim.fn.filereadable(tooling_root .. '/pom.xml') == 1 then
+      return tooling_root
+    end
     if module_root then
       return module_root
     end
-    if maven_root then
-      return maven_root
+    if tooling_root then
+      return tooling_root
     end
   end
 
@@ -855,6 +932,9 @@ local function build_maven_sync_cmd(cached)
   if cached.settings_xml then
     vim.list_extend(cmd, { '-s', cached.settings_xml })
   end
+  if should_apply_active_profiles() and type(cached.active_maven_profiles) == 'table' and #cached.active_maven_profiles > 0 then
+    table.insert(cmd, '-P' .. table.concat(cached.active_maven_profiles, ','))
+  end
 
   vim.list_extend(cmd, {
     '-DskipTests',
@@ -969,8 +1049,13 @@ local function apply_active_profiles(client, bufnr, profiles)
   client.request('workspace/executeCommand', params, function() end, bufnr)
 end
 
-local function should_apply_active_profiles()
-  return env_truthy 'JDTLS_APPLY_MAVEN_PROFILES'
+should_apply_active_profiles = function()
+  local value = vim.env.JDTLS_APPLY_MAVEN_PROFILES
+  if not value or value == '' then
+    return true
+  end
+  value = value:lower()
+  return value ~= '0' and value ~= 'false' and value ~= 'no' and value ~= 'off'
 end
 
 local function sanitize_jdtls_capabilities(capabilities)
@@ -1343,7 +1428,7 @@ return {
           maven_offline = cached.maven_offline,
           has_ge_maven_extension = cached.has_ge_maven_extension,
           apply_maven_profiles_enabled = should_apply_active_profiles(),
-          root_mode = (vim.env.JDTLS_ROOT_MODE or 'module'):lower(),
+          root_mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower(),
         }
 
         require('jdtls').start_or_attach(config)

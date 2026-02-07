@@ -538,6 +538,11 @@ return {
         pattern = 'java',
         callback = function(args)
           setup_jdtls(args.buf)
+          if vim.fn.has 'nvim-0.11' == 1 then
+            vim.diagnostic.enable(true, { bufnr = args.buf })
+          else
+            vim.diagnostic.enable(args.buf)
+          end
         end,
       })
     end,

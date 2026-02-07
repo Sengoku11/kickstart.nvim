@@ -216,6 +216,7 @@ return {
         underline = {
           severity = {
             vim.diagnostic.severity.ERROR,
+            vim.diagnostic.severity.WARN,
             vim.diagnostic.severity.INFO,
             vim.diagnostic.severity.HINT,
           },

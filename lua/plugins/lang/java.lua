@@ -379,6 +379,10 @@ local function setup_jdtls(bufnr)
   local extra_jvm_props = {}
   if cached.has_ge_maven_extension or env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
     vim.list_extend(extra_jvm_props, {
+      '-Ddevelocity.enabled=false',
+      '-Dgradle.enterprise.enabled=false',
+      '-Ddevelocity.scan.disabled=true',
+      '-Dscan=false',
       '-Dgradle.enterprise.maven.extension.enabled=false',
       '-Ddevelocity.maven.extension.enabled=false',
     })
@@ -402,12 +406,20 @@ local function setup_jdtls(bufnr)
     capabilities = capabilities,
     settings = {
       java = {
+        server = {
+          launchMode = 'Standard',
+        },
         configuration = {
           runtimes = {},
           updateBuildConfiguration = 'interactive',
           maven = {
             defaultMojoExecutionAction = 'ignore',
             notCoveredPluginExecutionSeverity = 'ignore',
+          },
+        },
+        errors = {
+          incompleteClasspath = {
+            severity = 'error',
           },
         },
         eclipse = {
@@ -454,6 +466,19 @@ local function setup_jdtls(bufnr)
     config.settings.java.configuration.maven.globalSettings = cached.global_settings_xml
   end
 
+  vim.g.ba_jdtls_last = {
+    root_dir = root_dir,
+    workspace_dir = workspace_dir,
+    cmd = cmd,
+    settings_xml = cached.settings_xml,
+    global_settings_xml = cached.global_settings_xml,
+    java_home = cached.java_home,
+    java_version_major = cached.java_version_major,
+    lombok_jar = cached.lombok_jar,
+    maven_offline = cached.maven_offline,
+    has_ge_maven_extension = cached.has_ge_maven_extension,
+  }
+
   jdtls.start_or_attach(config)
 end
 
@@ -476,6 +501,18 @@ return {
     },
     config = function()
       local augroup = vim.api.nvim_create_augroup('ba-java-jdtls', { clear = true })
+
+      if vim.fn.exists ':JdtlsStatus' == 0 then
+        vim.api.nvim_create_user_command('JdtlsStatus', function()
+          local state = vim.g.ba_jdtls_last
+          if not state then
+            vim.notify('[java] jdtls has not been initialized for this session yet.', vim.log.levels.INFO)
+            return
+          end
+          vim.notify(vim.inspect(state), vim.log.levels.INFO)
+        end, { desc = 'Show last resolved jdtls configuration' })
+      end
+
       vim.api.nvim_create_autocmd('FileType', {
         group = augroup,
         pattern = 'java',

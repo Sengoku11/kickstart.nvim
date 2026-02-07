@@ -16,6 +16,14 @@ local function env_truthy(name)
   return value == '1' or value == 'true' or value == 'yes' or value == 'on'
 end
 
+local function sourcepath_overrides_enabled()
+  local explicit = vim.env.JDTLS_ENABLE_SOURCEPATH_OVERRIDES
+  if explicit == nil or explicit == '' then
+    return false
+  end
+  return env_truthy 'JDTLS_ENABLE_SOURCEPATH_OVERRIDES'
+end
+
 local function read_file(path)
   local ok, lines = pcall(vim.fn.readfile, path)
   if not ok or not lines then
@@ -667,33 +675,11 @@ local function append_develocity_disable_flags(args)
 end
 
 local function build_maven_import_arguments(cached)
-  local args = {}
-
-  local skip_resources = vim.env.JDTLS_IMPORT_SKIP_RESOURCES
-  if skip_resources == nil or skip_resources == '' or env_truthy 'JDTLS_IMPORT_SKIP_RESOURCES' then
-    vim.list_extend(args, {
-      '-Dmaven.resources.skip=true',
-      '-DskipTests',
-      '-Dmaven.test.skip=true',
-      '-DskipITs',
-    })
+  local explicit = vim.env.JDTLS_MAVEN_IMPORT_ARGUMENTS
+  if explicit and explicit ~= '' then
+    return explicit
   end
-
-  if cached and cached.local_repo then
-    table.insert(args, '-Dmaven.repo.local=' .. cached.local_repo)
-  end
-
-  if should_apply_active_profiles and should_apply_active_profiles() then
-    if cached and type(cached.active_maven_profiles) == 'table' and #cached.active_maven_profiles > 0 then
-      table.insert(args, '-P' .. table.concat(cached.active_maven_profiles, ','))
-    end
-  end
-
-  if should_disable_ge_maven_extension and should_disable_ge_maven_extension(cached) then
-    append_develocity_disable_flags(args)
-  end
-
-  return table.concat(args, ' ')
+  return ''
 end
 
 local function detect_lombok_jar(local_repo)
@@ -971,8 +957,7 @@ local function should_auto_maven_sync(cached)
     return env_truthy 'JDTLS_MAVEN_SYNC_ON_ATTACH'
   end
 
-  -- Auto-sync by default only for known problematic extension setups.
-  return cached.has_ge_maven_extension
+  return false
 end
 
 local function build_maven_sync_cmd(cached)
@@ -1137,6 +1122,9 @@ local function normalize_entry_path(path)
 end
 
 local function ensure_generated_sources_via_classpath_update(root_dir, bufnr)
+  if not sourcepath_overrides_enabled() then
+    return
+  end
   bufnr = bufnr or 0
   local source_dirs, module_root = list_generated_source_dirs_for_buffer(root_dir, bufnr)
   if vim.tbl_isempty(source_dirs) or not module_root then
@@ -1244,6 +1232,9 @@ local function ensure_generated_sources_via_classpath_update(root_dir, bufnr)
 end
 
 local function attach_generated_sources(root_dir, bufnr)
+  if not sourcepath_overrides_enabled() then
+    return
+  end
   bufnr = bufnr or 0
   local source_dirs = list_generated_source_dirs_for_buffer(root_dir, bufnr)
   if vim.tbl_isempty(source_dirs) then
@@ -1595,7 +1586,7 @@ local function run_root_cause_probe(query)
     end, bufnr)
   end
 
-  local first_generated_dir = list_generated_source_dirs(root_dir)[1]
+  local first_generated_dir = sourcepath_overrides_enabled() and list_generated_source_dirs(root_dir)[1] or nil
   if first_generated_dir then
     client.request('workspace/executeCommand', {
       command = 'java.project.addToSourcePath',
@@ -1657,7 +1648,6 @@ local function run_maven_sync(root_dir, cached, opts)
 
       refresh_jdtls_import(root_dir)
       refresh_jdtls_projects(root_dir, 0)
-      attach_generated_sources(root_dir, 0)
     end)
   end)
 end
@@ -1666,7 +1656,6 @@ local function trigger_initial_diagnostics_refresh(root_dir)
   vim.defer_fn(function()
     refresh_jdtls_import(root_dir)
     refresh_jdtls_projects(root_dir, 0)
-    attach_generated_sources(root_dir, 0)
   end, 800)
 end
 
@@ -1693,16 +1682,13 @@ end
 should_apply_active_profiles = function()
   local value = vim.env.JDTLS_APPLY_MAVEN_PROFILES
   if not value or value == '' then
-    return true
+    return false
   end
   value = value:lower()
   return value ~= '0' and value ~= 'false' and value ~= 'no' and value ~= 'off'
 end
 
 should_disable_ge_maven_extension = function(cached)
-  if env_truthy 'JDTLS_ENABLE_DEVELOCITY_MAVEN_EXTENSION' then
-    return false
-  end
   if env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
     return true
   end
@@ -1712,7 +1698,7 @@ should_disable_ge_maven_extension = function(cached)
   if env_truthy 'JDTLS_AUTO_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
     return cached and cached.has_ge_maven_extension or false
   end
-  return cached and cached.has_ge_maven_extension or false
+  return false
 end
 
 local function sanitize_jdtls_capabilities(capabilities)
@@ -2106,8 +2092,7 @@ return {
           apply_maven_profiles_enabled = should_apply_active_profiles(),
           include_env_maven_profiles = env_truthy 'JDTLS_INCLUDE_ENV_MAVEN_PROFILES',
           maven_import_arguments = build_maven_import_arguments(cached),
-          import_skip_resources = (vim.env.JDTLS_IMPORT_SKIP_RESOURCES == nil or vim.env.JDTLS_IMPORT_SKIP_RESOURCES == '')
-            or env_truthy 'JDTLS_IMPORT_SKIP_RESOURCES',
+          import_skip_resources = build_maven_import_arguments(cached):find('-Dmaven.resources.skip=true', 1, true) ~= nil,
           generated_source_dirs = list_generated_source_dirs(root_dir),
           root_mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower(),
         }
@@ -2186,7 +2171,6 @@ return {
             return
           end
           refresh_jdtls_projects(root_dir, 0)
-          attach_generated_sources(root_dir, 0)
           refresh_jdtls_import(root_dir)
           vim.notify('[java] Triggered full project configuration refresh for all detected Java projects.', vim.log.levels.INFO)
         end, {
@@ -2196,6 +2180,13 @@ return {
 
       if vim.fn.exists ':JdtAttachGeneratedSources' == 0 then
         vim.api.nvim_create_user_command('JdtAttachGeneratedSources', function()
+          if not sourcepath_overrides_enabled() then
+            vim.notify(
+              '[java] Source/classpath overrides are disabled (minimal mode). Set JDTLS_ENABLE_SOURCEPATH_OVERRIDES=1 to enable this command.',
+              vim.log.levels.INFO
+            )
+            return
+          end
           local bufname = vim.api.nvim_buf_get_name(0)
           if bufname == '' then
             vim.notify('[java] Cannot attach generated sources: no file in current buffer.', vim.log.levels.WARN)
@@ -2328,7 +2319,6 @@ return {
           local client = clients[1]
           local root_dir = client.config and client.config.root_dir or ''
           refresh_jdtls_projects(root_dir, bufnr)
-          attach_generated_sources(root_dir, bufnr)
           client.request('workspace/executeCommand', {
             command = 'java.project.import',
             arguments = {},

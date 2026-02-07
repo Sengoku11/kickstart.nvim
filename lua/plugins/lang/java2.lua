@@ -2,6 +2,7 @@ local java_filetypes = { 'java' }
 local project_cache = {}
 local maven_sync_state = {}
 local workspace_build_state = {}
+local generated_source_attach_state = {}
 local should_apply_active_profiles
 local should_disable_ge_maven_extension
 
@@ -1101,61 +1102,46 @@ local function attach_generated_sources(root_dir, bufnr)
     return
   end
 
-  local uri = vim.uri_from_bufnr(bufnr)
-  if not uri or uri == '' then
-    uri = vim.uri_from_fname(root_dir .. '/pom.xml')
-  end
-
+  local state = generated_source_attach_state[root_dir] or {}
   for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
     if client and client.config and client.config.root_dir == root_dir then
       for _, dir in ipairs(source_dirs) do
         local dir_uri = vim.uri_from_fname(dir)
-        local arg_sets = {
-          { uri, dir },
-          { uri, dir_uri },
-          { uri, { dir } },
-          { uri, { dir_uri } },
-        }
-        for _, args in ipairs(arg_sets) do
-          client.request('workspace/executeCommand', {
-            command = 'java.project.addToSourcePath',
-            arguments = args,
-          }, function() end, bufnr)
-        end
+        client.request('workspace/executeCommand', {
+          command = 'java.project.addToSourcePath',
+          arguments = { dir_uri },
+        }, function(err, result)
+          local key = dir_uri
+          state[key] = {
+            error = err and (err.message or vim.inspect(err)) or nil,
+            result = result,
+          }
+          generated_source_attach_state[root_dir] = state
+        end, bufnr)
       end
     end
   end
 end
 
 local function request_list_source_paths(client, bufnr, uri, cb)
-  local arg_sets = {
-    { uri },
-    { uri, {} },
-    {},
-  }
-  local idx = 1
-
-  local function try_next()
-    local args = arg_sets[idx]
-    idx = idx + 1
-    if not args then
-      cb(nil, nil)
+  client.request('workspace/executeCommand', {
+    command = 'java.project.listSourcePaths',
+    arguments = {},
+  }, function(err, result)
+    if err then
+      cb(err, nil, result)
       return
     end
-
-    client.request('workspace/executeCommand', {
-      command = 'java.project.listSourcePaths',
-      arguments = args,
-    }, function(err, result)
-      if not err and type(result) == 'table' then
-        cb(nil, result)
-        return
-      end
-      try_next()
-    end, bufnr)
-  end
-
-  try_next()
+    if type(result) == 'table' and type(result.sourcePaths) == 'table' then
+      cb(nil, result.sourcePaths, result)
+      return
+    end
+    if type(result) == 'table' then
+      cb(nil, result, result)
+      return
+    end
+    cb(nil, nil, result)
+  end, bufnr)
 end
 
 local function tail_file_lines(path, max_lines)
@@ -1283,6 +1269,8 @@ local function run_root_cause_probe(query)
   local state = vim.g.ba_jdtls_last or {}
   local workspace_dir = state.workspace_dir and vim.fs.normalize(vim.fn.expand(state.workspace_dir)) or nil
   local query_path = query:gsub('%.', '/')
+  local pre_attach_result = nil
+  local pre_attach_error = nil
   local patterns = {
     'outofscopeexception',
     'failed to execute mojo',
@@ -1299,15 +1287,26 @@ local function run_root_cause_probe(query)
 
   vim.notify('[java2] Running root-cause probe for import resolution...', vim.log.levels.INFO)
 
-  client.request('java/buildWorkspace', true, function(build_err, build_result)
-    client.request('workspace/executeCommand', {
-      command = 'java.project.getClasspaths',
-      arguments = { uri, vim.fn.json_encode { scope = 'runtime' } },
-    }, function(cp_err, classpaths)
-      request_list_source_paths(client, bufnr, uri, function(sp_err, source_paths)
-        vim.schedule(function()
-          local log_candidates = gather_log_candidates(workspace_dir)
-          local hit_lines = {}
+  local function continue_probe()
+    client.request('java/buildWorkspace', true, function(build_err, build_result)
+      client.request('workspace/executeCommand', {
+        command = 'java.project.getClasspaths',
+        arguments = { uri, vim.fn.json_encode { scope = 'runtime' } },
+      }, function(cp_err, classpaths)
+        request_list_source_paths(client, bufnr, uri, function(sp_err, source_paths, source_paths_raw)
+          local attach_state = generated_source_attach_state[root_dir] or {}
+          local attach_preview = {}
+          local n = 0
+          for key, value in pairs(attach_state) do
+            n = n + 1
+            attach_preview[key] = value
+            if n >= 8 then
+              break
+            end
+          end
+          vim.schedule(function()
+            local log_candidates = gather_log_candidates(workspace_dir)
+            local hit_lines = {}
           for _, path in ipairs(log_candidates) do
             local hits = collect_log_hits(path, patterns, 2500, 60)
             vim.list_extend(hit_lines, hits)
@@ -1316,8 +1315,8 @@ local function run_root_cause_probe(query)
           local generated_files = find_generated_package_files(root_dir, query)
           local generated_dirs = list_generated_source_dirs(root_dir)
 
-          local report = {
-            '# JDTLS Root Cause Probe',
+            local report = {
+              '# JDTLS Root Cause Probe',
             '',
             '- query: `' .. query .. '`',
             '- root_dir: `' .. tostring(root_dir) .. '`',
@@ -1326,11 +1325,13 @@ local function run_root_cause_probe(query)
             '- build_error: `' .. tostring(build_err and (build_err.message or vim.inspect(build_err)) or 'nil') .. '`',
             '- classpath_error: `' .. tostring(cp_err and (cp_err.message or vim.inspect(cp_err)) or 'nil') .. '`',
             '- source_paths_error: `' .. tostring(sp_err and (sp_err.message or vim.inspect(sp_err)) or 'nil') .. '`',
-            '- generated_files_count: `' .. tostring(#generated_files) .. '`',
-            '- generated_dirs_count: `' .. tostring(#generated_dirs) .. '`',
-            '',
-            '## Generated Dirs',
-          }
+              '- generated_files_count: `' .. tostring(#generated_files) .. '`',
+              '- generated_dirs_count: `' .. tostring(#generated_dirs) .. '`',
+              '- pre_add_to_source_path_error: `' .. tostring(pre_attach_error or 'nil') .. '`',
+              '- pre_add_to_source_path_result: `' .. tostring(pre_attach_result and vim.inspect(pre_attach_result) or 'nil') .. '`',
+              '',
+              '## Generated Dirs',
+            }
 
           if vim.tbl_isempty(generated_dirs) then
             table.insert(report, '- none detected under `target/generated-sources`')
@@ -1361,6 +1362,18 @@ local function run_root_cause_probe(query)
           end
 
           table.insert(report, '')
+          table.insert(report, '## JDTLS listSourcePaths Raw Result')
+          table.insert(report, '```lua')
+          table.insert(report, vim.inspect(source_paths_raw))
+          table.insert(report, '```')
+
+          table.insert(report, '')
+          table.insert(report, '## addToSourcePath Recent Results')
+          table.insert(report, '```lua')
+          table.insert(report, vim.inspect(attach_preview))
+          table.insert(report, '```')
+
+          table.insert(report, '')
           table.insert(report, '## JDTLS Runtime Classpaths')
           local cps = type(classpaths) == 'table' and classpaths.classpaths or nil
           if type(cps) == 'table' and not vim.tbl_isempty(cps) then
@@ -1383,9 +1396,24 @@ local function run_root_cause_probe(query)
 
           open_report_buffer('JdtRootCause.md', report)
         end)
-      end)
+        end)
+      end, bufnr)
     end, bufnr)
-  end, bufnr)
+  end
+
+  local first_generated_dir = list_generated_source_dirs(root_dir)[1]
+  if first_generated_dir then
+    client.request('workspace/executeCommand', {
+      command = 'java.project.addToSourcePath',
+      arguments = { vim.uri_from_fname(first_generated_dir) },
+    }, function(err, result)
+      pre_attach_error = err and (err.message or vim.inspect(err)) or nil
+      pre_attach_result = result
+      continue_probe()
+    end, bufnr)
+  else
+    continue_probe()
+  end
 end
 
 local function run_maven_sync(root_dir, cached, opts)

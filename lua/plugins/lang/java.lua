@@ -171,16 +171,16 @@ local function normalize_java_version(version)
 end
 
 local function detect_java_home(version_major)
-  local java_home_env = vim.env.JAVA_HOME
-  if java_home_env and java_home_env ~= '' and vim.fn.isdirectory(java_home_env) == 1 then
-    return java_home_env
-  end
-
   if vim.fn.executable '/usr/libexec/java_home' == 1 then
     local out = vim.fn.systemlist { '/usr/libexec/java_home', '-v', tostring(version_major) }
     if vim.v.shell_error == 0 and out and out[1] and out[1] ~= '' and vim.fn.isdirectory(out[1]) == 1 then
       return out[1]
     end
+  end
+
+  local java_home_env = vim.env.JAVA_HOME
+  if java_home_env and java_home_env ~= '' and vim.fn.isdirectory(java_home_env) == 1 then
+    return java_home_env
   end
 
   return nil
@@ -225,6 +225,23 @@ local function detect_maven_global_settings()
   return nil
 end
 
+local function has_gradle_enterprise_maven_extension(root)
+  local extensions_xml = root .. '/.mvn/extensions.xml'
+  if vim.fn.filereadable(extensions_xml) ~= 1 then
+    return false
+  end
+
+  local content = read_file(extensions_xml)
+  if not content then
+    return false
+  end
+
+  local lowered = content:lower()
+  return lowered:find('gradle%-enterprise%-maven%-extension', 1, false) ~= nil
+    or lowered:find('develocity%-maven%-extension', 1, false) ~= nil
+    or lowered:find('com%.gradle', 1, false) ~= nil
+end
+
 local function detect_lombok_jar(local_repo)
   if not local_repo then
     return nil
@@ -240,9 +257,14 @@ local function detect_lombok_jar(local_repo)
   return jars[#jars]
 end
 
-local function detect_jdtls_cmd(workspace_dir, lombok_jar, java_home)
+local function detect_jdtls_cmd(workspace_dir, lombok_jar, java_home, extra_jvm_props)
+  extra_jvm_props = extra_jvm_props or {}
+
   if vim.fn.executable 'jdtls' == 1 then
     local cmd = { 'jdtls', '-data', workspace_dir }
+    for _, prop in ipairs(extra_jvm_props) do
+      table.insert(cmd, '--jvm-arg=' .. prop)
+    end
     if lombok_jar then
       table.insert(cmd, '--jvm-arg=-javaagent:' .. lombok_jar)
       table.insert(cmd, '--jvm-arg=-Xbootclasspath/a:' .. lombok_jar)
@@ -290,6 +312,10 @@ local function detect_jdtls_cmd(workspace_dir, lombok_jar, java_home)
     '-Xms1g',
   }
 
+  for _, prop in ipairs(extra_jvm_props) do
+    table.insert(cmd, prop)
+  end
+
   if lombok_jar then
     table.insert(cmd, '-javaagent:' .. lombok_jar)
     table.insert(cmd, '-Xbootclasspath/a:' .. lombok_jar)
@@ -332,11 +358,6 @@ local function setup_jdtls(bufnr)
     local local_repo = detect_maven_local_repo(root_dir, settings_xml)
     local lombok_jar = detect_lombok_jar(local_repo)
 
-    local maven_version = 'Automatic'
-    if vim.fn.filereadable(root_dir .. '/mvnw') == 1 then
-      maven_version = 'Wrapper'
-    end
-
     cached = {
       settings_xml = settings_xml,
       global_settings_xml = detect_maven_global_settings(),
@@ -344,8 +365,8 @@ local function setup_jdtls(bufnr)
       java_home = java_home,
       local_repo = local_repo,
       lombok_jar = lombok_jar,
-      maven_version = maven_version,
       maven_offline = env_truthy 'JDTLS_MAVEN_OFFLINE' or env_truthy 'MAVEN_OFFLINE',
+      has_ge_maven_extension = has_gradle_enterprise_maven_extension(root_dir),
     }
     project_cache[root_dir] = cached
   end
@@ -355,7 +376,15 @@ local function setup_jdtls(bufnr)
   local workspace_dir = vim.fn.stdpath 'data' .. '/jdtls-workspace/' .. project_name .. '-' .. workspace_id
   vim.fn.mkdir(workspace_dir, 'p')
 
-  local cmd = detect_jdtls_cmd(workspace_dir, cached.lombok_jar, cached.java_home)
+  local extra_jvm_props = {}
+  if cached.has_ge_maven_extension or env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
+    vim.list_extend(extra_jvm_props, {
+      '-Dgradle.enterprise.maven.extension.enabled=false',
+      '-Ddevelocity.maven.extension.enabled=false',
+    })
+  end
+
+  local cmd = detect_jdtls_cmd(workspace_dir, cached.lombok_jar, cached.java_home, extra_jvm_props)
   if not cmd then
     vim.notify('[java] jdtls not found. Install jdtls in PATH or set JDTLS_HOME.', vim.log.levels.WARN)
     return
@@ -375,16 +404,23 @@ local function setup_jdtls(bufnr)
       java = {
         configuration = {
           runtimes = {},
-          maven = {},
+          updateBuildConfiguration = 'interactive',
+          maven = {
+            defaultMojoExecutionAction = 'ignore',
+            notCoveredPluginExecutionSeverity = 'ignore',
+          },
         },
         eclipse = {
           downloadSources = false,
         },
+        maven = {
+          downloadSources = false,
+          updateSnapshots = false,
+        },
         import = {
           maven = {
             enabled = true,
-            version = cached.maven_version,
-            defaultMojoExecutionAction = 'ignore',
+            disableTestClasspathFlag = false,
             offline = {
               enabled = cached.maven_offline,
             },
@@ -412,12 +448,10 @@ local function setup_jdtls(bufnr)
 
   if cached.settings_xml then
     config.settings.java.configuration.maven.userSettings = cached.settings_xml
-    config.settings.java.import.maven.userSettings = cached.settings_xml
   end
 
   if cached.global_settings_xml then
     config.settings.java.configuration.maven.globalSettings = cached.global_settings_xml
-    config.settings.java.import.maven.globalSettings = cached.global_settings_xml
   end
 
   jdtls.start_or_attach(config)

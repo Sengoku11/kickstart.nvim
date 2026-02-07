@@ -43,25 +43,21 @@
     </pluginExecution>
 
     <!--
-      Generic import guard:
-      m2e/JDTLS can fail on many custom plugin goals ("run", "generate", etc.)
-      in constrained environments (extensions/proxy/classrealm context). Ignore
-      these executions for IDE import only; CLI Maven build remains authoritative.
+      OpenAPI sources are part of the compile model for this project.
+      Allow m2e/JDTLS to execute this goal during import so generated packages
+      (e.g. fr.bdf.*) are attached to the Java classpath.
     -->
     <pluginExecution>
       <pluginExecutionFilter>
-        <groupId>*</groupId>
-        <artifactId>*</artifactId>
+        <groupId>org.openapitools</groupId>
+        <artifactId>openapi-generator-maven-plugin</artifactId>
         <versionRange>[0,)</versionRange>
         <goals>
-          <goal>run</goal>
           <goal>generate</goal>
-          <goal>copy-resources</goal>
-          <goal>process-resources</goal>
         </goals>
       </pluginExecutionFilter>
       <action>
-        <ignore />
+        <execute />
       </action>
     </pluginExecution>
 

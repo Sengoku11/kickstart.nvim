@@ -1010,6 +1010,49 @@ local function refresh_jdtls_import(root_dir)
   end
 end
 
+local function refresh_jdtls_projects(root_dir, bufnr)
+  bufnr = bufnr or 0
+  for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
+    if client and client.config and client.config.root_dir == root_dir then
+      client.request('workspace/executeCommand', {
+        command = 'java.project.getAll',
+        arguments = {},
+      }, function(err, projects)
+        if err then
+          client.request('java/projectConfigurationUpdate', {
+            uri = vim.uri_from_bufnr(bufnr),
+          }, function() end, bufnr)
+          return
+        end
+
+        local identifiers = {}
+        if type(projects) == 'table' then
+          for _, project_uri in ipairs(projects) do
+            if type(project_uri) == 'string' and project_uri ~= '' then
+              table.insert(identifiers, { uri = project_uri })
+            end
+          end
+        end
+
+        if vim.tbl_isempty(identifiers) then
+          client.request('java/projectConfigurationUpdate', {
+            uri = vim.uri_from_bufnr(bufnr),
+          }, function() end, bufnr)
+          return
+        end
+
+        client.notify('java/projectConfigurationsUpdate', {
+          identifiers = identifiers,
+        })
+        client.request('java/buildProjects', {
+          identifiers = identifiers,
+          isFullBuild = true,
+        }, function() end, bufnr)
+      end, bufnr)
+    end
+  end
+end
+
 local function run_maven_sync(root_dir, cached, opts)
   opts = opts or {}
   local state = maven_sync_state[root_dir] or {}
@@ -1048,6 +1091,7 @@ local function run_maven_sync(root_dir, cached, opts)
       if result and result.code == 0 then
         vim.notify('[java] Maven sync finished. Refreshing JDTLS import/diagnostics...', vim.log.levels.INFO)
         refresh_jdtls_import(root_dir)
+        refresh_jdtls_projects(root_dir, 0)
       else
         local msg = '[java] Maven sync failed'
         if stderr_first ~= '' then
@@ -1062,6 +1106,7 @@ end
 local function trigger_initial_diagnostics_refresh(root_dir)
   vim.defer_fn(function()
     refresh_jdtls_import(root_dir)
+    refresh_jdtls_projects(root_dir, 0)
   end, 800)
 end
 
@@ -1088,13 +1133,16 @@ end
 should_apply_active_profiles = function()
   local value = vim.env.JDTLS_APPLY_MAVEN_PROFILES
   if not value or value == '' then
-    return false
+    return true
   end
   value = value:lower()
   return value ~= '0' and value ~= 'false' and value ~= 'no' and value ~= 'off'
 end
 
 should_disable_ge_maven_extension = function(cached)
+  if env_truthy 'JDTLS_ENABLE_DEVELOCITY_MAVEN_EXTENSION' then
+    return false
+  end
   if env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
     return true
   end
@@ -1104,7 +1152,7 @@ should_disable_ge_maven_extension = function(cached)
   if env_truthy 'JDTLS_AUTO_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
     return cached and cached.has_ge_maven_extension or false
   end
-  return false
+  return cached and cached.has_ge_maven_extension or false
 end
 
 local function sanitize_jdtls_capabilities(capabilities)
@@ -1242,7 +1290,14 @@ local function build_java_settings(base_settings, cached)
   settings.java.configuration = settings.java.configuration or {}
   settings.java.configuration.updateBuildConfiguration = settings.java.configuration.updateBuildConfiguration or 'automatic'
   settings.java.configuration.maven = settings.java.configuration.maven or {}
-  settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction or 'ignore'
+  local explicit_mojo_action = vim.env.JDTLS_M2E_DEFAULT_MOJO_ACTION
+  if explicit_mojo_action and explicit_mojo_action ~= '' then
+    local allowed = { ignore = true, warn = true, error = true, execute = true }
+    explicit_mojo_action = allowed[explicit_mojo_action] and explicit_mojo_action or nil
+  end
+  settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction
+    or explicit_mojo_action
+    or 'execute'
   settings.java.configuration.maven.notCoveredPluginExecutionSeverity = settings.java.configuration.maven.notCoveredPluginExecutionSeverity
     or 'ignore'
 
@@ -1549,6 +1604,26 @@ return {
         })
       end
 
+      if vim.fn.exists ':JdtProjectsRefresh' == 0 then
+        vim.api.nvim_create_user_command('JdtProjectsRefresh', function()
+          local bufname = vim.api.nvim_buf_get_name(0)
+          if bufname == '' then
+            vim.notify('[java] Cannot refresh project configuration: no file in current buffer.', vim.log.levels.WARN)
+            return
+          end
+          local root_dir = opts.root_dir(bufname)
+          if not root_dir then
+            vim.notify('[java] Cannot refresh project configuration: no Java project root found.', vim.log.levels.WARN)
+            return
+          end
+          refresh_jdtls_projects(root_dir, 0)
+          refresh_jdtls_import(root_dir)
+          vim.notify('[java] Triggered full project configuration refresh for all detected Java projects.', vim.log.levels.INFO)
+        end, {
+          desc = 'Force projectConfigurationsUpdate/buildProjects for all JDTLS projects in current root',
+        })
+      end
+
       if vim.fn.exists ':JdtDiagStatus' == 0 then
         vim.api.nvim_create_user_command('JdtDiagStatus', function()
           local bufnr = vim.api.nvim_get_current_buf()
@@ -1616,6 +1691,7 @@ return {
 
           local client = clients[1]
           local root_dir = client.config and client.config.root_dir or ''
+          refresh_jdtls_projects(root_dir, bufnr)
           client.request('workspace/executeCommand', {
             command = 'java.project.import',
             arguments = {},

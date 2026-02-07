@@ -11,6 +11,15 @@ local root_markers = {
 }
 local project_cache = {}
 
+local function env_truthy(name)
+  local value = vim.env[name]
+  if not value then
+    return false
+  end
+  value = value:lower()
+  return value == '1' or value == 'true' or value == 'yes' or value == 'on'
+end
+
 local function ascends_until(dir, stop_at, fn)
   local current = dir
   while current and current ~= '' do
@@ -323,6 +332,11 @@ local function setup_jdtls(bufnr)
     local local_repo = detect_maven_local_repo(root_dir, settings_xml)
     local lombok_jar = detect_lombok_jar(local_repo)
 
+    local maven_version = 'Automatic'
+    if vim.fn.filereadable(root_dir .. '/mvnw') == 1 then
+      maven_version = 'Wrapper'
+    end
+
     cached = {
       settings_xml = settings_xml,
       global_settings_xml = detect_maven_global_settings(),
@@ -330,6 +344,8 @@ local function setup_jdtls(bufnr)
       java_home = java_home,
       local_repo = local_repo,
       lombok_jar = lombok_jar,
+      maven_version = maven_version,
+      maven_offline = env_truthy 'JDTLS_MAVEN_OFFLINE' or env_truthy 'MAVEN_OFFLINE',
     }
     project_cache[root_dir] = cached
   end
@@ -361,8 +377,18 @@ local function setup_jdtls(bufnr)
           runtimes = {},
           maven = {},
         },
+        eclipse = {
+          downloadSources = false,
+        },
         import = {
-          maven = {},
+          maven = {
+            enabled = true,
+            version = cached.maven_version,
+            defaultMojoExecutionAction = 'ignore',
+            offline = {
+              enabled = cached.maven_offline,
+            },
+          },
         },
       },
     },

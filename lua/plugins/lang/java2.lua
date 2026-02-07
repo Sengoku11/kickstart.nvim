@@ -63,6 +63,32 @@ local function split_words(value)
   return vim.split(value, '%s+', { trimempty = true })
 end
 
+local function split_csv(value)
+  if not value or value == '' then
+    return {}
+  end
+  local out = {}
+  for _, item in ipairs(vim.split(value, ',', { trimempty = true })) do
+    local trimmed = vim.trim(item)
+    if trimmed ~= '' then
+      table.insert(out, trimmed)
+    end
+  end
+  return out
+end
+
+local function append_unique(list, value)
+  if not value or value == '' then
+    return
+  end
+  for _, v in ipairs(list) do
+    if v == value then
+      return
+    end
+  end
+  table.insert(list, value)
+end
+
 local function root_markers()
   local lsp_config = vim.lsp and vim.lsp.config or nil
   local markers = lsp_config and lsp_config.jdtls and lsp_config.jdtls.root_markers
@@ -128,6 +154,84 @@ local function detect_settings_xml(root_dir)
   end
 
   return nil
+end
+
+local function parse_active_profiles_from_settings(settings_xml)
+  local profiles = {}
+  if not settings_xml or settings_xml == '' or vim.fn.filereadable(settings_xml) ~= 1 then
+    return profiles
+  end
+
+  local content = read_file(settings_xml)
+  if not content then
+    return profiles
+  end
+
+  for profile in content:gmatch '<activeProfile>%s*(.-)%s*</activeProfile>' do
+    append_unique(profiles, profile)
+  end
+
+  return profiles
+end
+
+local function parse_profiles_from_maven_config(root_dir)
+  local profiles = {}
+  if not root_dir or root_dir == '' then
+    return profiles
+  end
+
+  local config_file = root_dir .. '/.mvn/maven.config'
+  if vim.fn.filereadable(config_file) ~= 1 then
+    return profiles
+  end
+
+  local content = read_file(config_file)
+  if not content then
+    return profiles
+  end
+
+  local words = split_words(content:gsub('\n', ' '))
+  local i = 1
+  while i <= #words do
+    local w = words[i]
+    if w:match '^%-P' and #w > 2 then
+      for _, p in ipairs(split_csv(w:sub(3))) do
+        append_unique(profiles, p)
+      end
+    elseif w == '-P' or w == '--activate-profiles' then
+      local next_word = words[i + 1] or ''
+      for _, p in ipairs(split_csv(next_word)) do
+        append_unique(profiles, p)
+      end
+      i = i + 1
+    elseif w:match '^%-%-activate%-profiles=' then
+      for _, p in ipairs(split_csv(w:gsub('^%-%-activate%-profiles=', ''))) do
+        append_unique(profiles, p)
+      end
+    end
+    i = i + 1
+  end
+
+  return profiles
+end
+
+local function detect_active_maven_profiles(root_dir, settings_xml)
+  local profiles = {}
+
+  for _, p in ipairs(split_csv(vim.env.JDTLS_MAVEN_PROFILES)) do
+    append_unique(profiles, p)
+  end
+  for _, p in ipairs(split_csv(vim.env.MAVEN_PROFILES_ACTIVE)) do
+    append_unique(profiles, p)
+  end
+  for _, p in ipairs(parse_active_profiles_from_settings(settings_xml)) do
+    append_unique(profiles, p)
+  end
+  for _, p in ipairs(parse_profiles_from_maven_config(root_dir)) do
+    append_unique(profiles, p)
+  end
+
+  return profiles
 end
 
 local function infer_java_version_from_settings(settings_xml)
@@ -546,6 +650,7 @@ local function get_project_cache(root_dir)
   local java_version_major = normalize_java_version(pom_java_version or settings_java_version)
 
   local java_home = detect_java_home(java_version_major) or detect_java_home_from_toolchains(root_dir, java_version_major)
+  local active_profiles = detect_active_maven_profiles(root_dir, settings_xml)
 
   local cached = {
     settings_xml = settings_xml,
@@ -555,6 +660,7 @@ local function get_project_cache(root_dir)
     settings_java_version = settings_java_version,
     java_version_major = java_version_major,
     java_home = java_home,
+    active_maven_profiles = active_profiles,
     local_repo = detect_maven_local_repo(settings_xml),
     maven_offline = env_truthy 'JDTLS_MAVEN_OFFLINE' or env_truthy 'MAVEN_OFFLINE',
     has_ge_maven_extension = has_gradle_enterprise_maven_extension(root_dir),
@@ -822,6 +928,26 @@ local function trigger_initial_diagnostics_refresh(root_dir)
   vim.defer_fn(function()
     refresh_jdtls_import(root_dir)
   end, 800)
+end
+
+local function apply_active_profiles(client, bufnr, profiles)
+  if not client or type(profiles) ~= 'table' or vim.tbl_isempty(profiles) then
+    return
+  end
+
+  local profiles_csv = table.concat(profiles, ',')
+  local uri = vim.uri_from_bufnr(bufnr)
+  local params = {
+    command = 'java.project.updateSettings',
+    arguments = {
+      uri,
+      {
+        ['org.eclipse.m2e.core.selectedProfiles'] = profiles_csv,
+      },
+    },
+  }
+
+  client.request('workspace/executeCommand', params, function() end, bufnr)
 end
 
 local function sanitize_jdtls_capabilities(capabilities)
@@ -1183,6 +1309,7 @@ return {
           settings_xml = cached.settings_xml,
           global_settings_xml = cached.global_settings_xml,
           lifecycle_mappings_xml = cached.lifecycle_mappings_xml,
+          active_maven_profiles = cached.active_maven_profiles,
           pom_java_version = cached.pom_java_version,
           settings_java_version = cached.settings_java_version,
           java_home = cached.java_home,
@@ -1195,6 +1322,16 @@ return {
         }
 
         require('jdtls').start_or_attach(config)
+
+        vim.defer_fn(function()
+          local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = 0 }
+          for _, client in ipairs(clients) do
+            if client and client.config and client.config.root_dir == root_dir then
+              apply_active_profiles(client, 0, cached.active_maven_profiles)
+            end
+          end
+        end, 150)
+
         trigger_initial_diagnostics_refresh(root_dir)
 
         vim.defer_fn(function()

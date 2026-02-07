@@ -570,6 +570,7 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
   local jdtls_xmx = vim.env.JDTLS_XMX or '4g'
   local jdtls_java_bin = detect_jdtls_java_bin(cached)
   local enable_lombok_agent = not env_truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
+  local enable_lombok_bootclasspath = env_truthy 'JDTLS_LOMBOK_BOOTCLASSPATH'
   local extra_jvm_props = {}
   if cached.has_ge_maven_extension or env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
     vim.list_extend(extra_jvm_props, {
@@ -614,7 +615,9 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
 
     if enable_lombok_agent and cached.lombok_jar then
       table.insert(cmd, '--jvm-arg=-javaagent:' .. cached.lombok_jar)
-      table.insert(cmd, '--jvm-arg=-Xbootclasspath/a:' .. cached.lombok_jar)
+      if enable_lombok_bootclasspath then
+        table.insert(cmd, '--jvm-arg=-Xbootclasspath/a:' .. cached.lombok_jar)
+      end
     end
 
     vim.list_extend(cmd, {
@@ -667,7 +670,9 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
 
     if enable_lombok_agent and cached.lombok_jar then
       table.insert(cmd, '-javaagent:' .. cached.lombok_jar)
-      table.insert(cmd, '-Xbootclasspath/a:' .. cached.lombok_jar)
+      if enable_lombok_bootclasspath then
+        table.insert(cmd, '-Xbootclasspath/a:' .. cached.lombok_jar)
+      end
     end
 
     vim.list_extend(cmd, {
@@ -1184,6 +1189,7 @@ return {
           java_version_major = cached.java_version_major,
           lombok_jar = cached.lombok_jar,
           lombok_agent_enabled = not env_truthy 'JDTLS_DISABLE_LOMBOK_AGENT',
+          lombok_bootclasspath_enabled = env_truthy 'JDTLS_LOMBOK_BOOTCLASSPATH',
           maven_offline = cached.maven_offline,
           has_ge_maven_extension = cached.has_ge_maven_extension,
         }

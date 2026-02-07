@@ -10,6 +10,12 @@
 let mapleader = " "
 let maplocalleader = " "
 
+" Let IdeaVim handle split-navigation keys (prevents IDE keymap conflicts).
+sethandler <C-h> a:vim
+sethandler <C-j> a:vim
+sethandler <C-k> a:vim
+sethandler <C-l> a:vim
+
 " ---------- Stateful toggles ----------
 " IdeaVim/IntelliJ actions don't expose tool-window visibility to Vimscript.
 " We emulate Neovim-like toggles by tracking state for keys that are toggles in your nvim config.
@@ -20,15 +26,47 @@ let g:ba_tw_todo_open = 0
 let g:ba_tw_debug_open = 0
 let g:ba_tw_problems_open = 0
 
-function! s:toggle_toolwindow(varname, activate_action)
+function! s:run_action(action_id)
+  let l:prev_err = v:errmsg
+  let v:errmsg = ''
+  execute 'silent! action ' . a:action_id
+  let l:ok = empty(v:errmsg)
+  let v:errmsg = l:prev_err
+  return l:ok
+endfunction
+
+function! s:toggle_toolwindow(varname, activate_action, ...)
+  let l:keep_editor_focus = (a:0 > 0) ? a:1 : 0
   if get(g:, a:varname, 0)
-    execute 'action ' . a:activate_action
-    action HideActiveWindow
+    call s:run_action(a:activate_action)
+    call s:run_action('HideActiveWindow')
+    if l:keep_editor_focus
+      call s:run_action('EditorEscape')
+    endif
     execute 'let g:' . a:varname . ' = 0'
   else
-    execute 'action ' . a:activate_action
+    call s:run_action(a:activate_action)
+    if l:keep_editor_focus
+      call s:run_action('EditorEscape')
+    endif
     execute 'let g:' . a:varname . ' = 1'
   endif
+endfunction
+
+function! s:toggle_project_window()
+  " Prefer dedicated toggle if available on this IDE build.
+  if s:run_action('ProjectViewToggle')
+    return
+  endif
+  " Fallback to stateful toggle and keep editor focus so repeat keypress works naturally.
+  call s:toggle_toolwindow('ba_tw_project_open', 'ActivateProjectToolWindow', 1)
+endfunction
+
+function! s:toggle_terminal_window()
+  if s:run_action('ActivateTerminalToolWindow')
+    return
+  endif
+  call s:run_action('Terminal.OpenInTerminal')
 endfunction
 
 " ---------- Core ----------
@@ -71,18 +109,18 @@ nmap <silent> [B <Action>(MoveTabLeft)
 nmap <silent> ]B <Action>(MoveTabRight)
 
 " ---------- Explorer / terminal ----------
-nmap <silent> <leader>e :call <SID>toggle_toolwindow('ba_tw_project_open', 'ActivateProjectToolWindow')<CR>
-nmap <silent> <Bslash> :call <SID>toggle_toolwindow('ba_tw_project_open', 'ActivateProjectToolWindow')<CR>
-nmap <silent> <leader>tt :call <SID>toggle_toolwindow('ba_tw_terminal_open', 'ActivateTerminalToolWindow')<CR>
+nmap <silent> <leader>e :call <SID>toggle_project_window()<CR>
+nmap <silent> <Bslash> :call <SID>toggle_project_window()<CR>
+nmap <silent> <leader>tt :call <SID>toggle_terminal_window()<CR>
 nmap <silent> <leader>os :call <SID>toggle_toolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
 nmap <silent> <leader>ob <Action>(RecentFiles)
 
 " ---------- Smart finding / search ----------
 " Requested parity:
 " - <leader>/  => project grep alternative
-" - <leader><leader> => smart buffer finder alternative
+" - <leader><leader> => full project file finder
 nmap <silent> <leader><space> <Action>(SearchEverywhere)
-nmap <silent> <leader><leader> <Action>(RecentFiles)
+nmap <silent> <leader><leader> <Action>(GotoFile)
 nmap <silent> <leader>, <Action>(RecentFiles)
 nmap <silent> <leader>/ <Action>(FindInPath)
 nmap <silent> <leader>: <Action>(GotoAction)
@@ -97,7 +135,7 @@ nmap <silent> <leader>fr <Action>(RecentFiles)
 
 nmap <silent> <leader>sb <Action>(Find)
 nmap <silent> <leader>sB <Action>(FindInPath)
-nmap <silent> <leader>sw <Action>(FindWordAtCaret)
+nmap <silent> <leader>sw viw<Action>(FindInPath)
 xmap <silent> <leader>sw <Action>(FindInPath)
 nmap <silent> <leader>s/ <Action>(Find)
 nmap <silent> <leader>sA <Action>(GotoAction)

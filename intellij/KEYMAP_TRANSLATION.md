@@ -37,12 +37,12 @@ Legend:
 | Key | Source | Neovim intent | IntelliJ action / mapping | Status |
 |---|---|---|---|---|
 | `<leader><space>` | `lua/plugins/editor/snacks-picker.lua:84` | Smart file finder | `SearchEverywhere` | Approx |
-| `<leader><leader>` | requested + legacy telescope comment | Smart buffer finder | `RecentFiles` | Approx |
+| `<leader><leader>` | requested + legacy telescope comment | Project file finder | `GotoFile` | Approx |
 | `<leader>,` | `lua/plugins/editor/snacks-picker.lua:85` | Buffers picker | `RecentFiles` | Approx |
 | `<leader>/` | `lua/plugins/editor/snacks-picker.lua:86` | Grep | `FindInPath` | Exact |
 | `<leader>:` | `lua/plugins/editor/snacks-picker.lua:87` | Command history | `GotoAction` | Approx |
 | `<leader>n` | `lua/plugins/editor/snacks-picker.lua:88` | Notification history | `Notifications` | Approx |
-| `<leader>e` / `\` | `lua/plugins/editor/snacks-picker.lua:89-90` | Toggle explorer | stateful toggle wrapper on `ActivateProjectToolWindow` + `HideActiveWindow` | Approx |
+| `<leader>e` / `\` | `lua/plugins/editor/snacks-picker.lua:89-90` | Toggle explorer | `ProjectViewToggle` when available, fallback to stateful wrapper (`ActivateProjectToolWindow` + `HideActiveWindow`) | Approx |
 | `<leader>fb` | `lua/plugins/editor/snacks-picker.lua:93` | Buffers | `RecentFiles` | Approx |
 | `<leader>fc` | `lua/plugins/editor/snacks-picker.lua:94` | Find config file | `GotoFile` | Approx |
 | `<leader>ff` | `lua/plugins/editor/snacks-picker.lua:95` | Find files | `GotoFile` | Exact |
@@ -51,7 +51,7 @@ Legend:
 | `<leader>fr` | `lua/plugins/editor/snacks-picker.lua:98` | Recent files | `RecentFiles` | Exact |
 | `<leader>sb` | `lua/plugins/editor/snacks-picker.lua:110` | Buffer lines | `Find` | Approx |
 | `<leader>sB` | `lua/plugins/editor/snacks-picker.lua:111` | Grep open buffers | `FindInPath` | Approx |
-| `<leader>sw` (n/x) | `lua/plugins/editor/snacks-picker.lua:112` | Grep word/selection | `FindWordAtCaret` / `FindInPath` | Approx |
+| `<leader>sw` (n/x) | `lua/plugins/editor/snacks-picker.lua:112` | Grep word/selection | normal: `viw` + `FindInPath`, visual: `FindInPath` | Approx |
 | `<leader>s` (operator) | `lua/plugins/editor/snacks-picker.lua:114` | Grep by motion | no operator equivalent | N/A |
 | `<leader>s"` | `lua/plugins/editor/snacks-picker.lua:117` | Registers picker | no IntelliJ register model | N/A |
 | `<leader>s/` | `lua/plugins/editor/snacks-picker.lua:118` | Search history | `Find` | Approx |
@@ -182,3 +182,9 @@ These are scoped to custom Neovim plugin UIs and do not have a direct IntelliJ e
 - `<leader>dr` has two Neovim meanings (global debug UI and Rust-local debuggables). IntelliJ mapping keeps global debug behavior.
 - `<leader>st`/`<leader>sT` appears in multiple plugin files with same TODO-search intent; merged to `ActivateTODOToolWindow`.
 - `<leader>e` and `\` both mapped to project explorer, mirroring Neovim.
+
+## 12) Compatibility fallbacks
+
+- `<leader>e` tries `ProjectViewToggle` first, then uses fallback toggle logic if that action id is unavailable.
+- `<leader>tt` tries `ActivateTerminalToolWindow`, then falls back to `Terminal.OpenInTerminal`.
+- `<C-h>/<C-j>/<C-k>/<C-l>` use `sethandler ... a:vim` so IntelliJ keymap conflicts do not steal split navigation keys.

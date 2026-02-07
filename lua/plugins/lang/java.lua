@@ -71,6 +71,25 @@ local function root_markers()
   }
 end
 
+local function detect_root_dir(path)
+  local file_dir = vim.fs.dirname(path)
+  local maven_root = nil
+
+  each_parent_dir(file_dir, function(dir)
+    if vim.fn.isdirectory(dir .. '/.mvn') == 1 or vim.fn.filereadable(dir .. '/mvnw') == 1 then
+      maven_root = dir
+      return true
+    end
+    return false
+  end)
+
+  if maven_root then
+    return maven_root
+  end
+
+  return vim.fs.root(path, root_markers())
+end
+
 local function detect_settings_xml(root_dir)
   local discovered = nil
 
@@ -339,6 +358,8 @@ local function get_project_cache(root_dir)
 end
 
 local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
+  local jdtls_xms = vim.env.JDTLS_XMS or '1g'
+  local jdtls_xmx = vim.env.JDTLS_XMX or '2g'
   local extra_jvm_props = {}
   if cached.has_ge_maven_extension or env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
     vim.list_extend(extra_jvm_props, {
@@ -354,6 +375,9 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
   local jdtls_bin = vim.fn.exepath 'jdtls'
   if jdtls_bin ~= '' then
     local cmd = { jdtls_bin }
+
+    table.insert(cmd, '--jvm-arg=-Xms' .. jdtls_xms)
+    table.insert(cmd, '--jvm-arg=-Xmx' .. jdtls_xmx)
 
     for _, prop in ipairs(extra_jvm_props) do
       table.insert(cmd, '--jvm-arg=' .. prop)
@@ -413,7 +437,8 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
     '-Declipse.product=org.eclipse.jdt.ls.core.product',
     '-Dlog.protocol=true',
     '-Dlog.level=WARN',
-    '-Xms1g',
+    '-Xms' .. jdtls_xms,
+    '-Xmx' .. jdtls_xmx,
   }
 
   vim.list_extend(cmd, extra_jvm_props)
@@ -450,7 +475,7 @@ local function build_java_settings(base_settings, cached)
   settings.java.configuration = settings.java.configuration or {}
   settings.java.configuration.updateBuildConfiguration = settings.java.configuration.updateBuildConfiguration or 'automatic'
   settings.java.configuration.maven = settings.java.configuration.maven or {}
-  settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction or 'ignore'
+  settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction or 'execute'
   settings.java.configuration.maven.notCoveredPluginExecutionSeverity = settings.java.configuration.maven.notCoveredPluginExecutionSeverity
     or 'warning'
 
@@ -487,8 +512,18 @@ local function build_java_settings(base_settings, cached)
   settings.java.maven.downloadSources = false
   settings.java.maven.updateSnapshots = false
 
+  settings.java.import.gradle = settings.java.import.gradle or {}
+  settings.java.import.gradle.enabled = false
+  settings.java.import.gradle.wrapper = settings.java.import.gradle.wrapper or {}
+  settings.java.import.gradle.wrapper.enabled = false
+  settings.java.import.gradle.offline = settings.java.import.gradle.offline or {}
+  settings.java.import.gradle.offline.enabled = true
+
   settings.java.eclipse = settings.java.eclipse or {}
   settings.java.eclipse.downloadSources = false
+
+  settings.java.autobuild = settings.java.autobuild or {}
+  settings.java.autobuild.enabled = true
 
   settings.java.errors = settings.java.errors or {}
   settings.java.errors.incompleteClasspath = settings.java.errors.incompleteClasspath or {}
@@ -517,7 +552,7 @@ return {
     opts = function()
       return {
         root_dir = function(path)
-          return vim.fs.root(path, root_markers())
+          return detect_root_dir(path)
         end,
         project_name = function(root_dir)
           return root_dir and vim.fs.basename(root_dir) or nil

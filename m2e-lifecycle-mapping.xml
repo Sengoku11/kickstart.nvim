@@ -43,9 +43,9 @@
     </pluginExecution>
 
     <!--
-      OpenAPI sources are part of the compile model for this project.
-      Allow m2e/JDTLS to execute this goal during import so generated packages
-      (e.g. fr.bdf.*) are attached to the Java classpath.
+      OpenAPI generation is handled by CLI Maven sync/build in this setup.
+      Ignore m2e execution during IDE import to keep project model resilient in
+      constrained/proxied environments.
     -->
     <pluginExecution>
       <pluginExecutionFilter>
@@ -57,7 +57,7 @@
         </goals>
       </pluginExecutionFilter>
       <action>
-        <execute />
+        <ignore />
       </action>
     </pluginExecution>
 

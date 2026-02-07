@@ -616,6 +616,9 @@ end
 
 local function detect_maven_local_repo(settings_xml)
   local repo = vim.env.MAVEN_REPO_LOCAL
+  if repo and repo ~= '' then
+    repo = vim.fs.normalize(vim.fn.expand(repo))
+  end
   if repo and repo ~= '' and vim.fn.isdirectory(repo) == 1 then
     return repo
   end
@@ -625,7 +628,7 @@ local function detect_maven_local_repo(settings_xml)
     return repo
   end
 
-  local fallback = vim.fn.expand '~/.m2/repository'
+  local fallback = vim.fs.normalize(vim.fn.expand '~/.m2/repository')
   if vim.fn.isdirectory(fallback) == 1 then
     return fallback
   end
@@ -663,6 +666,16 @@ end
 
 local function build_maven_import_arguments(cached)
   local args = {}
+
+  local skip_resources = vim.env.JDTLS_IMPORT_SKIP_RESOURCES
+  if skip_resources == nil or skip_resources == '' or env_truthy 'JDTLS_IMPORT_SKIP_RESOURCES' then
+    vim.list_extend(args, {
+      '-Dmaven.resources.skip=true',
+      '-DskipTests',
+      '-Dmaven.test.skip=true',
+      '-DskipITs',
+    })
+  end
 
   if cached and cached.local_repo then
     table.insert(args, '-Dmaven.repo.local=' .. cached.local_repo)
@@ -1621,7 +1634,7 @@ local function build_java_settings(base_settings, cached)
   end
   settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction
     or explicit_mojo_action
-    or 'execute'
+    or 'ignore'
   settings.java.configuration.maven.notCoveredPluginExecutionSeverity = settings.java.configuration.maven.notCoveredPluginExecutionSeverity
     or 'ignore'
 
@@ -1864,6 +1877,8 @@ return {
           apply_maven_profiles_enabled = should_apply_active_profiles(),
           include_env_maven_profiles = env_truthy 'JDTLS_INCLUDE_ENV_MAVEN_PROFILES',
           maven_import_arguments = build_maven_import_arguments(cached),
+          import_skip_resources = (vim.env.JDTLS_IMPORT_SKIP_RESOURCES == nil or vim.env.JDTLS_IMPORT_SKIP_RESOURCES == '')
+            or env_truthy 'JDTLS_IMPORT_SKIP_RESOURCES',
           generated_source_dirs = list_generated_source_dirs(root_dir),
           root_mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower(),
         }

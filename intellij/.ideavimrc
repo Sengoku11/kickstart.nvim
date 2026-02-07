@@ -20,44 +20,35 @@ let g:ba_tw_todo_open = get(g:, 'ba_tw_todo_open', 0)
 let g:ba_tw_debug_open = get(g:, 'ba_tw_debug_open', 0)
 let g:ba_tw_problems_open = get(g:, 'ba_tw_problems_open', 0)
 
-function! BaRunAction(action_id) abort
-  try
-    execute 'action ' . a:action_id
-    return 1
-  catch
-    return 0
-  endtry
-endfunction
-
 function! BaToggleToolwindow(varname, activate_action) abort
   if get(g:, a:varname, 0)
-    call BaRunAction(a:activate_action)
-    call BaRunAction('HideActiveWindow')
+    execute 'action ' . a:activate_action
+    action HideActiveWindow
     execute 'let g:' . a:varname . ' = 0'
   else
-    call BaRunAction(a:activate_action)
+    execute 'action ' . a:activate_action
     execute 'let g:' . a:varname . ' = 1'
   endif
 endfunction
 
 function! BaToggleProjectWindow() abort
-  call BaToggleToolwindow('ba_tw_project_open', 'ActivateProjectToolWindow')
+  if g:ba_tw_project_open
+    action ActivateProjectToolWindow
+    action HideActiveWindow
+    let g:ba_tw_project_open = 0
+  else
+    action ActivateProjectToolWindow
+    let g:ba_tw_project_open = 1
+  endif
 endfunction
 
 function! BaToggleTerminalWindow() abort
-  if get(g:, 'ba_tw_terminal_open', 0)
-    call BaRunAction('ActivateTerminalToolWindow')
-    call BaRunAction('HideActiveWindow')
+  if g:ba_tw_terminal_open
+    action ActivateTerminalToolWindow
+    action HideActiveWindow
     let g:ba_tw_terminal_open = 0
-    return
-  endif
-
-  if BaRunAction('ActivateTerminalToolWindow')
-    let g:ba_tw_terminal_open = 1
-    return
-  endif
-
-  if BaRunAction('Terminal.OpenInTerminal')
+  else
+    action ActivateTerminalToolWindow
     let g:ba_tw_terminal_open = 1
   endif
 endfunction
@@ -85,10 +76,10 @@ imap <silent> <A-k> <Action>(MoveLineUp)
 imap <silent> <A-j> <Action>(MoveLineDown)
 
 " ---------- Windows / tabs ----------
-nmap <silent> <C-h> <Action>(SwitchLeft)
-nmap <silent> <C-j> <Action>(SwitchDown)
-nmap <silent> <C-k> <Action>(SwitchUp)
-nmap <silent> <C-l> <Action>(SwitchRight)
+nmap <silent> <C-h> <Action>(PreviousProjectWindow)
+nmap <silent> <C-j> <Action>(PreviousProjectWindow)
+nmap <silent> <C-k> <Action>(NextProjectWindow)
+nmap <silent> <C-l> <Action>(NextProjectWindow)
 
 nmap <silent> <leader>bp <Action>(PinActiveTab)
 nmap <silent> <leader>bP <Action>(CloseAllEditorsButPinned)
@@ -104,7 +95,7 @@ nmap <silent> ]B <Action>(MoveTabRight)
 " ---------- Explorer / terminal ----------
 nmap <silent> <leader>e :call BaToggleProjectWindow()<CR>
 nmap <silent> <Bslash> :call BaToggleProjectWindow()<CR>
-nmap <silent> <leader>tt :action ActivateTerminalToolWindow<CR>:action Terminal.OpenInTerminal<CR>
+nmap <silent> <leader>tt :call BaToggleTerminalWindow()<CR>
 nmap <silent> <leader>os :call BaToggleToolwindow('ba_tw_vcs_open', 'ActivateVersionControlToolWindow')<CR>
 nmap <silent> <leader>ob <Action>(RecentFiles)
 

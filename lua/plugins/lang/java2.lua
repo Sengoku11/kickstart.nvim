@@ -107,8 +107,15 @@ local function root_markers()
 end
 
 local function detect_root_dir(path)
+  local root_mode = (vim.env.JDTLS_ROOT_MODE or 'module'):lower()
   local file_dir = vim.fs.dirname(path)
   local maven_root = nil
+
+  local module_root = vim.fs.root(path, {
+    'pom.xml',
+    'build.gradle',
+    'build.gradle.kts',
+  })
 
   each_parent_dir(file_dir, function(dir)
     if vim.fn.isdirectory(dir .. '/.mvn') == 1 or vim.fn.filereadable(dir .. '/mvnw') == 1 then
@@ -118,8 +125,20 @@ local function detect_root_dir(path)
     return false
   end)
 
-  if maven_root then
-    return maven_root
+  if root_mode == 'repo' then
+    if maven_root then
+      return maven_root
+    end
+    if module_root then
+      return module_root
+    end
+  else
+    if module_root then
+      return module_root
+    end
+    if maven_root then
+      return maven_root
+    end
   end
 
   return vim.fs.root(path, root_markers())
@@ -851,7 +870,7 @@ local function build_maven_sync_cmd(cached)
     '-Ddevelocity.maven.extension.enabled=false',
   })
 
-  local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources process-resources')
+  local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources process-resources compile')
   if vim.tbl_isempty(goals) then
     goals = { 'generate-sources', 'process-resources' }
   end
@@ -948,6 +967,10 @@ local function apply_active_profiles(client, bufnr, profiles)
   }
 
   client.request('workspace/executeCommand', params, function() end, bufnr)
+end
+
+local function should_apply_active_profiles()
+  return env_truthy 'JDTLS_APPLY_MAVEN_PROFILES'
 end
 
 local function sanitize_jdtls_capabilities(capabilities)
@@ -1319,18 +1342,22 @@ return {
           lombok_bootclasspath_enabled = env_truthy 'JDTLS_LOMBOK_BOOTCLASSPATH',
           maven_offline = cached.maven_offline,
           has_ge_maven_extension = cached.has_ge_maven_extension,
+          apply_maven_profiles_enabled = should_apply_active_profiles(),
+          root_mode = (vim.env.JDTLS_ROOT_MODE or 'module'):lower(),
         }
 
         require('jdtls').start_or_attach(config)
 
-        vim.defer_fn(function()
-          local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = 0 }
-          for _, client in ipairs(clients) do
-            if client and client.config and client.config.root_dir == root_dir then
-              apply_active_profiles(client, 0, cached.active_maven_profiles)
+        if should_apply_active_profiles() then
+          vim.defer_fn(function()
+            local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = 0 }
+            for _, client in ipairs(clients) do
+              if client and client.config and client.config.root_dir == root_dir then
+                apply_active_profiles(client, 0, cached.active_maven_profiles)
+              end
             end
-          end
-        end, 150)
+          end, 150)
+        end
 
         trigger_initial_diagnostics_refresh(root_dir)
 

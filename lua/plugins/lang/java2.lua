@@ -1,6 +1,7 @@
 local java_filetypes = { 'java' }
 local project_cache = {}
 local maven_sync_state = {}
+local workspace_build_state = {}
 
 local function env_truthy(name)
   local value = vim.env[name]
@@ -817,6 +818,80 @@ local function trigger_initial_diagnostics_refresh(root_dir)
   end, 800)
 end
 
+local function sanitize_jdtls_capabilities(capabilities)
+  if type(capabilities) ~= 'table' then
+    return capabilities
+  end
+
+  local sanitized = vim.deepcopy(capabilities)
+  if sanitized.textDocument then
+    -- Force classic publishDiagnostics path for jdtls.
+    sanitized.textDocument.diagnostic = nil
+  end
+  if sanitized.workspace then
+    sanitized.workspace.diagnostic = nil
+  end
+
+  return sanitized
+end
+
+local function get_jdtls_namespace(client_id)
+  local ok, ns = pcall(vim.lsp.diagnostic.get_namespace, client_id)
+  if ok then
+    return ns
+  end
+  return nil
+end
+
+local function diagnostic_is_enabled(bufnr, namespace)
+  local ok, enabled = pcall(vim.diagnostic.is_enabled, { bufnr = bufnr, namespace = namespace })
+  if ok then
+    return enabled
+  end
+
+  ok, enabled = pcall(vim.diagnostic.is_enabled, bufnr, namespace)
+  if ok then
+    return enabled
+  end
+
+  ok, enabled = pcall(vim.diagnostic.is_enabled, bufnr)
+  if ok then
+    return enabled
+  end
+
+  return nil
+end
+
+local function force_enable_jdtls_diagnostics(client_id, bufnr)
+  local ns = get_jdtls_namespace(client_id)
+  if not ns then
+    return
+  end
+
+  pcall(vim.diagnostic.enable, { bufnr = bufnr, namespace = ns })
+  pcall(vim.diagnostic.enable, bufnr, ns)
+  pcall(vim.diagnostic.show, ns, bufnr)
+  pcall(vim.diagnostic.show, nil, bufnr)
+end
+
+local function trigger_initial_workspace_build(root_dir, bufnr)
+  if workspace_build_state[root_dir] then
+    return
+  end
+  workspace_build_state[root_dir] = true
+
+  vim.defer_fn(function()
+    local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = bufnr }
+    for _, client in ipairs(clients) do
+      if client and client.config and client.config.root_dir == root_dir then
+        client.request('java/buildWorkspace', true, function()
+          force_enable_jdtls_diagnostics(client.id, bufnr)
+        end, bufnr)
+      end
+    end
+  end, 1400)
+end
+
 local function build_java_settings(base_settings, cached)
   local settings = vim.deepcopy(base_settings or {})
   settings.java = settings.java or {}
@@ -1029,7 +1104,13 @@ return {
         local capabilities = nil
         local ok_blink, blink = pcall(require, 'blink.cmp')
         if ok_blink and blink.get_lsp_capabilities then
-          capabilities = blink.get_lsp_capabilities()
+          capabilities = sanitize_jdtls_capabilities(blink.get_lsp_capabilities())
+        end
+
+        local publish_handler = vim.lsp.handlers['textDocument/publishDiagnostics']
+        local legacy_publish = vim.lsp.diagnostic and vim.lsp.diagnostic.on_publish_diagnostics or nil
+        if legacy_publish then
+          publish_handler = legacy_publish
         end
 
         local config = {
@@ -1037,6 +1118,9 @@ return {
           root_dir = root_dir,
           settings = build_java_settings(opts.settings, cached),
           capabilities = capabilities,
+          handlers = {
+            ['textDocument/publishDiagnostics'] = publish_handler,
+          },
           init_options = {
             bundles = opts.bundles or {},
           },
@@ -1066,6 +1150,14 @@ return {
 
         require('jdtls').start_or_attach(config)
         trigger_initial_diagnostics_refresh(root_dir)
+
+        vim.defer_fn(function()
+          local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = 0 }
+          for _, client in ipairs(clients) do
+            force_enable_jdtls_diagnostics(client.id, 0)
+          end
+        end, 300)
+        trigger_initial_workspace_build(root_dir, 0)
 
         if should_auto_maven_sync(cached) then
           run_maven_sync(root_dir, cached, { force = false })
@@ -1103,6 +1195,37 @@ return {
           bang = true,
           desc = 'Run Maven generate-sources/process-resources for current Java root (! to force rerun)',
         })
+      end
+
+      if vim.fn.exists ':JdtDiagStatus' == 0 then
+        vim.api.nvim_create_user_command('JdtDiagStatus', function()
+          local bufnr = vim.api.nvim_get_current_buf()
+          local clients = vim.lsp.get_clients { name = 'jdtls', bufnr = bufnr }
+          if vim.tbl_isempty(clients) then
+            vim.notify('[java2] No jdtls client attached to current buffer.', vim.log.levels.WARN)
+            return
+          end
+
+          local client = clients[1]
+          local ns = get_jdtls_namespace(client.id)
+          local diags = vim.diagnostic.get(bufnr, ns and { namespace = ns } or {})
+          local errors = 0
+          for _, d in ipairs(diags) do
+            if d.severity == vim.diagnostic.severity.ERROR then
+              errors = errors + 1
+            end
+          end
+
+          local state = {
+            bufnr = bufnr,
+            client_id = client.id,
+            namespace = ns,
+            diagnostics_count = #diags,
+            error_count = errors,
+            diagnostic_enabled = diagnostic_is_enabled(bufnr, ns),
+          }
+          vim.notify(vim.inspect(state), vim.log.levels.INFO)
+        end, { desc = 'Show jdtls diagnostics state for current buffer' })
       end
 
       vim.api.nvim_create_autocmd('FileType', {

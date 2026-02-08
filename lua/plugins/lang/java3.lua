@@ -725,7 +725,27 @@ local function maven_sync(root, c, force)
 end
 
 local function open_report_buffer(title, lines)
-  local safe_lines = type(lines) == 'table' and lines or { tostring(lines or '') }
+  local safe_lines = {}
+  local push_line = function(item)
+    local text = tostring(item or ''):gsub('\r\n', '\n'):gsub('\r', '\n')
+    local parts = vim.split(text, '\n', { plain = true, trimempty = false })
+    if vim.tbl_isempty(parts) then
+      table.insert(safe_lines, '')
+      return
+    end
+    for _, part in ipairs(parts) do
+      table.insert(safe_lines, part)
+    end
+  end
+
+  if type(lines) == 'table' then
+    for _, line in ipairs(lines) do
+      push_line(line)
+    end
+  else
+    push_line(lines)
+  end
+
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(buf, title)
   vim.bo[buf].buftype = 'nofile'

@@ -416,19 +416,30 @@ local function generated_patch_delay_ms()
   return 700
 end
 
-local function project_uri(root, bufnr)
+local function module_root_for_buffer(root, bufnr)
   bufnr = bufnr or 0
   if vim.api.nvim_buf_is_valid(bufnr) then
     local file = vim.api.nvim_buf_get_name(bufnr)
     if file ~= '' then
-      return vim.uri_from_fname(file)
+      local module_root = vim.fs.root(file, { 'pom.xml' })
+      if module_root and module_root ~= '' then
+        return vim.fs.normalize(module_root)
+      end
     end
   end
-  local pom = root .. '/pom.xml'
-  if vim.fn.filereadable(pom) == 1 then
-    return vim.uri_from_fname(pom)
+  return root and vim.fs.normalize(root) or nil
+end
+
+local function project_uri(root, bufnr)
+  local module_root = module_root_for_buffer(root, bufnr)
+  if module_root and module_root ~= '' then
+    local pom = module_root .. '/pom.xml'
+    if vim.fn.filereadable(pom) == 1 then
+      return vim.uri_from_fname(pom)
+    end
+    return vim.uri_from_fname(module_root)
   end
-  return vim.uri_from_fname(root)
+  return vim.uri_from_fname(vim.fn.getcwd())
 end
 
 local function same_root(a, b)
@@ -505,13 +516,11 @@ end
 
 local function list_generated_source_dirs_for_buffer(root, bufnr)
   bufnr = bufnr or 0
-  local file = vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_get_name(bufnr) or ''
-  local module_root = (file ~= '' and vim.fs.root(file, { 'pom.xml' })) or root
+  local module_root = module_root_for_buffer(root, bufnr)
   if not module_root or module_root == '' then
     return {}, nil
   end
 
-  module_root = vim.fs.normalize(module_root)
   local patterns = {
     module_root .. '/target/generated-sources/**/src/main/java',
     module_root .. '/target/generated-sources/**/src/generated/java',
@@ -580,6 +589,54 @@ local function build_generated_source_entry(path, is_test)
     output = is_test and 'target/test-classes' or nil,
     attributes = attrs,
   }
+end
+
+local function sanitize_classpath_entry(entry)
+  if type(entry) ~= 'table' then
+    return nil
+  end
+  local kind = tonumber(entry.kind)
+  local path = normalize_entry_path(entry.path or '')
+  if not kind or not path or path == '' then
+    return nil
+  end
+
+  local attrs = {}
+  if type(entry.attributes) == 'table' then
+    for key, value in pairs(entry.attributes) do
+      if key ~= nil and value ~= nil then
+        local skey = tostring(key)
+        if skey ~= '' then
+          attrs[skey] = tostring(value)
+        end
+      end
+    end
+  end
+
+  local sanitized = {
+    kind = kind,
+    path = path,
+    attributes = attrs,
+  }
+  local output = normalize_entry_path(entry.output or '')
+  if output and output ~= '' then
+    sanitized.output = output
+  end
+  return sanitized
+end
+
+local function sanitize_classpath_entries(entries)
+  local out = {}
+  if type(entries) ~= 'table' then
+    return out
+  end
+  for _, entry in ipairs(entries) do
+    local sanitized = sanitize_classpath_entry(entry)
+    if sanitized then
+      table.insert(out, sanitized)
+    end
+  end
+  return out
 end
 
 local function decode_source_paths(raw)
@@ -665,6 +722,23 @@ local function try_add_to_source_path(client, source_dirs, bufnr, done)
   end
 
   step()
+end
+
+local function try_update_classpath_entries_setting(client, uri, classpath_entries, bufnr, done)
+  client.request('workspace/executeCommand', {
+    command = 'java.project.updateSettings',
+    arguments = {
+      uri,
+      {
+        [JDT_SETTING_CLASSPATH_ENTRIES] = classpath_entries,
+      },
+    },
+  }, function(update_err, update_res)
+    done(update_err, {
+      update_settings_result = update_res,
+      classpath_entries = classpath_entries,
+    })
+  end, bufnr)
 end
 
 local function ensure_generated_sources_via_classpath(root, bufnr)
@@ -821,13 +895,25 @@ local function ensure_generated_sources_via_classpath(root, bufnr)
       return
     end
 
+    local payload_entries = sanitize_classpath_entries(classpath_entries)
+    if vim.tbl_isempty(payload_entries) then
+      generated_patch_running[root] = nil
+      generated_patch_state[root] = {
+        module_root = module_root,
+        source_dirs = source_dirs,
+        added = added,
+        updated = false,
+        error = 'Unable to serialize classpath entries for java.project.updateClassPaths.',
+      }
+      return
+    end
+
     client.request('workspace/executeCommand', {
       command = 'java.project.updateClassPaths',
       arguments = {
         uri,
         {
-          entries = classpath_entries,
-          classpathEntries = classpath_entries,
+          classpathEntries = payload_entries,
         },
       },
     }, function(update_err)
@@ -847,49 +933,69 @@ local function ensure_generated_sources_via_classpath(root, bufnr)
       end
 
       if update_error and tostring(update_error):find('entries" is null', 1, true) then
-        try_update_source_paths_setting(client, uri, source_dirs, bufnr, function(settings_err, settings_result)
-          if not settings_err then
+        try_update_classpath_entries_setting(client, uri, payload_entries, bufnr, function(cp_settings_err, cp_settings_result)
+          if not cp_settings_err then
             generated_patch_state[root] = {
               module_root = module_root,
               source_dirs = source_dirs,
               added = added,
               updated = true,
               error = update_error,
-              fallback_update_settings = settings_result,
+              fallback_classpath_update_settings = cp_settings_result,
             }
             client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
             refresh_projects(root, bufnr)
             return
           end
 
-          try_add_to_source_path(client, source_dirs, bufnr, function(fallback_results)
-            local any_success = false
-            for _, item in pairs(fallback_results) do
-              local ok_status = item and not item.error
-              if ok_status and type(item.result) == 'table' and item.result.status == false then
-                ok_status = false
-              end
-              if ok_status then
-                any_success = true
-                break
-              end
-            end
-
-            generated_patch_state[root] = {
-              module_root = module_root,
-              source_dirs = source_dirs,
-              added = added,
-              updated = any_success,
-              error = update_error,
-              fallback_update_settings_error = settings_err and (settings_err.message or vim.inspect(settings_err)) or nil,
-              fallback_update_settings = settings_result,
-              fallback_add_to_source_path = fallback_results,
-            }
-
-            if any_success then
+          try_update_source_paths_setting(client, uri, source_dirs, bufnr, function(settings_err, settings_result)
+            if not settings_err then
+              generated_patch_state[root] = {
+                module_root = module_root,
+                source_dirs = source_dirs,
+                added = added,
+                updated = true,
+                error = update_error,
+                fallback_classpath_update_settings_error = cp_settings_err and (cp_settings_err.message or vim.inspect(cp_settings_err)) or nil,
+                fallback_classpath_update_settings = cp_settings_result,
+                fallback_update_settings = settings_result,
+              }
               client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
               refresh_projects(root, bufnr)
+              return
             end
+
+            try_add_to_source_path(client, source_dirs, bufnr, function(fallback_results)
+              local any_success = false
+              for _, item in pairs(fallback_results) do
+                local ok_status = item and not item.error
+                if ok_status and type(item.result) == 'table' and item.result.status == false then
+                  ok_status = false
+                end
+                if ok_status then
+                  any_success = true
+                  break
+                end
+              end
+
+              generated_patch_state[root] = {
+                module_root = module_root,
+                source_dirs = source_dirs,
+                added = added,
+                updated = any_success,
+                error = update_error,
+                fallback_classpath_update_settings_error = cp_settings_err and (cp_settings_err.message or vim.inspect(cp_settings_err)) or nil,
+                fallback_classpath_update_settings = cp_settings_result,
+                fallback_update_settings_error = settings_err and (settings_err.message or vim.inspect(settings_err)) or nil,
+                fallback_update_settings = settings_result,
+                fallback_add_to_source_path = fallback_results,
+              }
+
+              if any_success then
+                client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
+                refresh_projects(root, bufnr)
+              end
+            end)
           end)
         end)
         return

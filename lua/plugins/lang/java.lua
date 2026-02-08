@@ -3,163 +3,105 @@ return {
     'mfussenegger/nvim-jdtls',
     ft = 'java',
     config = function()
-      local home = os.getenv 'HOME'
-      local mason_path = vim.fn.stdpath 'data' .. '/mason/packages/jdtls'
-      local jdtls_path = mason_path
-
       -- ============================================================================
-      -- 1. ROBUST PATH FINDING (Lombok & JDTLS)
+      -- 1. ROBUST PATH FINDING (System First -> Mason Fallback)
       -- ============================================================================
 
-      -- Helper: Find Lombok JAR (Checks Mason, then Maven Local Repo)
-      local function get_lombok_jar()
-        -- Check Mason (sometimes included)
-        local mason_lombok = vim.fn.glob(mason_path .. '/lombok.jar')
-        if mason_lombok ~= '' then
-          return mason_lombok
-        end
+      -- Attempt 1: Check system PATH (e.g. /usr/bin/jdtls, brew, etc.)
+      local jdtls_bin = vim.fn.exepath 'jdtls'
 
-        -- Check Standard Maven Local Repo (~/.m2)
-        local lombok_version = '1.18.36' -- fallback version
-        local m2_lombok = vim.fn.glob(home .. '/.m2/repository/org/projectlombok/lombok/*/lombok-*.jar', true, true)
-
-        -- Return the latest version found in .m2
-        if m2_lombok and #m2_lombok > 0 then
-          return m2_lombok[#m2_lombok] -- usually the last one is the latest
-        end
-
-        return nil
-      end
-
-      -- Helper: Find JDTLS Launcher JAR
-      local function get_launcher_jar()
-        local launchers = vim.fn.glob(jdtls_path .. '/plugins/org.eclipse.equinox.launcher_*.jar', true, true)
-        if launchers and #launchers > 0 then
-          return launchers[1]
-        end
-        return nil
-      end
-
-      -- Helper: Determine OS Configuration Directory
-      local function get_config_dir()
-        if vim.fn.has 'macunix' == 1 then
-          return jdtls_path .. '/config_mac'
-        elseif vim.fn.has 'win32' == 1 then
-          return jdtls_path .. '/config_win'
-        else
-          return jdtls_path .. '/config_linux'
+      -- Attempt 2: Check Mason (only if system binary is missing)
+      if jdtls_bin == '' then
+        local mason_bin = vim.fn.stdpath 'data' .. '/mason/bin/jdtls'
+        if vim.fn.executable(mason_bin) == 1 then
+          jdtls_bin = mason_bin
         end
       end
 
-      -- ============================================================================
-      -- 2. COMMAND CONSTRUCTION (The Fix)
-      -- ============================================================================
-
-      local launcher_jar = get_launcher_jar()
-      local config_dir = get_config_dir()
-      local lombok_jar = get_lombok_jar()
-      local workspace_dir = vim.fn.stdpath 'cache' .. '/jdtls-workspace/' .. vim.fn.fnamemodify(vim.fn.getcwd(), ':t')
-
-      -- Validation: Verify we found everything needed to launch
-      if not launcher_jar or vim.fn.filereadable(launcher_jar) == 0 then
-        vim.notify('JDTLS Launcher JAR not found in: ' .. jdtls_path, vim.log.levels.ERROR)
+      -- Fail gracefully if absolutely nothing is found
+      if jdtls_bin == '' then
+        vim.notify('JDTLS executable not found in PATH or Mason.', vim.log.levels.ERROR)
         return
       end
 
-      -- The Java Command
-      local cmd = {
-        'java',
+      -- ============================================================================
+      -- 2. THE FIX: Inject Disable Flags via Environment Variable
+      -- ============================================================================
+      -- We set JAVA_TOOL_OPTIONS within the Neovim process.
+      -- Any child process (like JDTLS) will inherit this.
+      -- The JVM reads this variable automatically at startup.
+      local disable_flags = ' -Dgradle.scan.disabled=true -Ddevelocity.scan.disabled=true -Dskip.gradle.scan=true'
+      local current_opts = vim.env.JAVA_TOOL_OPTIONS or ''
 
-        -- JVM Settings
-        '-Declipse.application=org.eclipse.jdt.ls.core.id1',
-        '-Dosgi.bundles.defaultStartLevel=4',
-        '-Declipse.product=org.eclipse.jdt.ls.core.product',
-        '-Dlog.protocol=true',
-        '-Dlog.level=ALL',
-        '-Xms1g',
-        '-Xmx2g',
-
-        -- [CRITICAL FIX] Disable Develocity / Gradle Enterprise Extensions
-        -- This prevents the "OutOfScopeException" crash during import
-        '-Dgradle.scan.disabled=true',
-        '-Ddevelocity.scan.disabled=true',
-        '-Dskip.gradle.scan=true',
-
-        -- Java 17+ Requirements
-        '--add-modules=ALL-SYSTEM',
-        '--add-opens',
-        'java.base/java.util=ALL-UNNAMED',
-        '--add-opens',
-        'java.base/java.lang=ALL-UNNAMED',
-      }
-
-      -- Inject Lombok Agent if found
-      if lombok_jar then
-        table.insert(cmd, '-javaagent:' .. lombok_jar)
-      else
-        vim.notify('Lombok JAR not found. Lombok support will be disabled.', vim.log.levels.WARN)
+      -- Only append if not already present to avoid infinite growth on reloads
+      if not string.find(current_opts, 'gradle.scan.disabled') then
+        vim.env.JAVA_TOOL_OPTIONS = current_opts .. disable_flags
       end
 
-      -- Finalize Command
+      -- ============================================================================
+      -- 3. LOMBOK DISCOVERY (M2 -> Mason -> Local)
+      -- ============================================================================
+      local lombok_jar = nil
+      local paths_to_check = {
+        -- Check local Maven repo (most likely place for devs)
+        vim.fn.glob(os.getenv 'HOME' .. '/.m2/repository/org/projectlombok/lombok/*/lombok-*.jar', true, true),
+        -- Check Mason package path
+        vim.fn.glob(vim.fn.stdpath 'data' .. '/mason/packages/jdtls/lombok.jar', true, true),
+      }
+
+      for _, path_list in ipairs(paths_to_check) do
+        if type(path_list) == 'table' and #path_list > 0 then
+          -- Use the last one (usually highest version in .m2)
+          lombok_jar = path_list[#path_list]
+          break
+        elseif type(path_list) == 'string' and path_list ~= '' then
+          lombok_jar = path_list
+          break
+        end
+      end
+
+      -- ============================================================================
+      -- 4. SERVER CONFIGURATION
+      -- ============================================================================
+      local home = os.getenv 'HOME'
+      local workspace_dir = vim.fn.stdpath 'cache' .. '/jdtls-workspace/' .. vim.fn.fnamemodify(vim.fn.getcwd(), ':t')
+
+      local cmd = { jdtls_bin }
+
+      -- Add Lombok agent to the command if found
+      -- Note: Even though we set JAVA_TOOL_OPTIONS, adding the agent explicitly
+      -- to the command args is often safer for the wrapper script to handle properly.
+      if lombok_jar then
+        table.insert(cmd, '--jvm-arg=-javaagent:' .. lombok_jar)
+      end
+
       vim.list_extend(cmd, {
-        '-jar',
-        launcher_jar,
-        '-configuration',
-        config_dir,
         '-data',
         workspace_dir,
       })
 
-      -- ============================================================================
-      -- 3. LSP SETUP (Capabilities & Handlers)
-      -- ============================================================================
-
+      -- Capabilities
+      local capabilities = require('cmp_nvim_lsp').default_capabilities()
       local on_attach = function(client, bufnr)
-        -- Enable debugger if available
         if pcall(require, 'jdtls') then
           require('jdtls').setup_dap { hotcodereplace = 'auto' }
-          require('jdtls.dap').setup_dap_main_class_configs()
         end
-
-        -- Standard Keymaps (Optional - add your own here)
-        local opts = { buffer = bufnr }
-        vim.keymap.set('n', '<leader>jo', "<Cmd>lua require'jdtls'.organize_imports()<CR>", opts)
-        vim.keymap.set('n', '<leader>jtc', "<Cmd>lua require'jdtls'.test_class()<CR>", opts)
-        vim.keymap.set('n', '<leader>jtm', "<Cmd>lua require'jdtls'.test_nearest_method()<CR>", opts)
       end
 
-      local capabilities = require('cmp_nvim_lsp').default_capabilities()
-
-      -- Start the Server
       require('jdtls').start_or_attach {
         cmd = cmd,
         root_dir = require('jdtls.setup').find_root { '.git', 'mvnw', 'gradlew', 'pom.xml' },
         settings = {
           java = {
             eclipse = { downloadSources = true },
-            configuration = { updateBuildConfiguration = 'interactive' },
             maven = { downloadSources = true },
-            implementationsCodeLens = { enabled = true },
-            referencesCodeLens = { enabled = true },
-            inlayHints = { parameterNames = { enabled = 'all' } },
+            configuration = { updateBuildConfiguration = 'interactive' },
             signatureHelp = { enabled = true },
-            contentProvider = { preferred = 'fernflower' }, -- Use standard decompiler
-            sources = {
-              organizeImports = {
-                starThreshold = 9999,
-                staticStarThreshold = 9999,
-              },
-            },
+            contentProvider = { preferred = 'fernflower' },
           },
         },
         capabilities = capabilities,
         on_attach = on_attach,
-        flags = {
-          allow_incremental_sync = true,
-        },
-        init_options = {
-          bundles = {}, -- You can add debug/test adapter bundles here later
-        },
       }
     end,
   },

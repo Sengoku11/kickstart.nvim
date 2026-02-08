@@ -255,11 +255,17 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   local xms, xmx = vim.env.JDTLS_XMS or '1g', vim.env.JDTLS_XMX or '4g'
   local with_lombok = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
 
-  -- Disable Develocity/scan integrations for stable imports.
-  local develocity_flags = {
-    '-Dgradle.scan.disabled=true',
-    '-Ddevelocity.scan.disabled=true',
-  }
+  -- FIX: Force disable flags via Environment Variable
+  -- This bypasses wrapper script issues where --jvm-arg might be misplaced/ignored.
+  -- We include both Legacy (Gradle Ent) and New (Develocity) flags.
+  local disable_flags = ' -Dgradle.scan.disabled=true -Ddevelocity.scan.disabled=true'
+
+  -- Append to existing options or set new ones.
+  -- This affects the JDTLS process spawned by Neovim.
+  local existing_opts = vim.env.JDK_JAVA_OPTIONS or ''
+  if not string.find(existing_opts, 'gradle.scan.disabled') then
+    vim.env.JDK_JAVA_OPTIONS = existing_opts .. disable_flags
+  end
 
   if jdtls_bin ~= '' then
     local cmd = {
@@ -268,9 +274,7 @@ local function resolve_cmd(config_dir, workspace_dir, c)
       '--jvm-arg=-Xms' .. xms,
       '--jvm-arg=-Xmx' .. xmx,
     }
-    for _, flag in ipairs(develocity_flags) do
-      table.insert(cmd, '--jvm-arg=' .. flag)
-    end
+
     vim.list_extend(cmd, {
       '-configuration',
       config_dir,
@@ -285,6 +289,7 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     return cmd, 'jdtls-bin'
   end
 
+  -- Fallback: Manual JAR Launcher (Direct Java Control)
   local home = vim.env.JDTLS_HOME
   if not home or home == '' or vim.fn.isdirectory(home) ~= 1 then
     return nil, nil
@@ -306,8 +311,10 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     '-Dlog.level=WARN',
     '-Xms' .. xms,
     '-Xmx' .. xmx,
-    develocity_flags[1],
-    develocity_flags[2],
+    -- NOTE: disable flags are now handled by JDK_JAVA_OPTIONS env var above,
+    -- but we can keep explicit ones here as backup since we control `java` directly.
+    '-Dgradle.scan.disabled=true',
+    '-Ddevelocity.scan.disabled=true',
     '--add-modules=ALL-SYSTEM',
     '--add-opens',
     'java.base/java.util=ALL-UNNAMED',

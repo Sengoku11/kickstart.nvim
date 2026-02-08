@@ -96,25 +96,6 @@ local function request_project_classpath_entries(client, bufnr, uri, cb)
   end, bufnr)
 end
 
-local function infer_module_prefix(classpath_entries, module_root)
-  local module_name = module_root and vim.fs.basename(module_root) or nil
-  local fallback = module_name and module_name ~= '' and ('/' .. module_name .. '/') or '/'
-
-  for _, entry in ipairs(classpath_entries) do
-    if type(entry) == 'table' and tonumber(entry.kind) == 3 then
-      local path = normalize_slashes(entry.path)
-      if path and path ~= '' then
-        local prefix = path:match('^(%/[^/]+/)')
-        if prefix then
-          return prefix
-        end
-      end
-    end
-  end
-
-  return fallback
-end
-
 local function ensure_generated_sources_on_classpath(root, bufnr)
   if truthy 'JDTLS_DISABLE_GENERATED_SOURCE_PATCH' then
     return
@@ -135,7 +116,6 @@ local function ensure_generated_sources_on_classpath(root, bufnr)
         end
 
         local new_entries = vim.deepcopy(classpath_entries)
-        local module_prefix = infer_module_prefix(new_entries, module_root)
         local existing = {}
         for _, entry in ipairs(new_entries) do
           if type(entry) == 'table' and tonumber(entry.kind) == 3 then
@@ -149,15 +129,14 @@ local function ensure_generated_sources_on_classpath(root, bufnr)
         local added = false
         for _, dir in ipairs(dirs) do
           local rel = normalize_slashes(vim.fs.relpath(dir, module_root))
-          local entry_path = rel and (module_prefix .. rel:gsub('^/', '')) or nil
-          if rel and entry_path and rel ~= '' and not rel:find('^%.%./') and not existing[entry_path] then
+          if rel and rel ~= '' and not rel:find('^%.%./') and not existing[rel] then
             table.insert(new_entries, {
               kind = 3,
-              path = entry_path,
+              path = rel,
               output = nil,
               attributes = {},
             })
-            existing[entry_path] = true
+            existing[rel] = true
             added = true
           end
         end
@@ -174,21 +153,7 @@ local function ensure_generated_sources_on_classpath(root, bufnr)
               classpathEntries = new_entries,
             },
           },
-        }, function(update_err)
-          if update_err then
-            local message = update_err.message or vim.inspect(update_err)
-            vim.notify('[java3] updateClassPaths failed: ' .. message, vim.log.levels.WARN)
-            return
-          end
-          client.request('workspace/executeCommand', {
-            command = 'java.project.import',
-            arguments = {},
-          }, function() end, bufnr)
-          client.request('workspace/executeCommand', {
-            command = 'java.project.refreshDiagnostics',
-            arguments = {},
-          }, function() end, bufnr)
-        end, bufnr)
+        }, function() end, bufnr)
       end)
     end
   end

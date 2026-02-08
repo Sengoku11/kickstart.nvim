@@ -1,3 +1,12 @@
+-- FIX: Inject Disable Flags via Environment Variable
+-- This sets the variable globally for the editor session.
+-- Any Java process (including JDTLS) started hereafter will inherit these flags,
+-- preventing the Develocity extension from crashing the build import.
+local existing_opts = vim.env.JAVA_TOOL_OPTIONS or ''
+if not string.find(existing_opts, 'gradle.scan.disabled') then
+  vim.env.JAVA_TOOL_OPTIONS = existing_opts .. ' -Dgradle.scan.disabled=true -Ddevelocity.scan.disabled=true -Dskip.gradle.scan=true'
+end
+
 ---@type string[]
 local java_filetypes = { 'java' }
 

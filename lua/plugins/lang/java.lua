@@ -9,13 +9,6 @@ local java_filetypes = { 'java' }
 ---@field local_repo string|nil
 ---@field lombok_jar string|nil
 ---@field maven_offline boolean
----@field module_root string
----@field extensions_xml string|nil
----@field extensions_kind '"legacy"'|'"develocity"'|nil
----@field develocity_user_config string|nil
----@field bypass_maven_extensions boolean
----@field maven_override_args { arg: string, pattern: string }[]
----@field maven_multi_module_dir string|nil
 ---@field import_args string
 
 ---@type table<string, JavaCacheEntry>
@@ -63,97 +56,6 @@ local function detect_root(file)
     return module_root or project_root or vim.fs.root(file, { '.git' })
   end
   return project_root or module_root or vim.fs.root(file, { '.git' })
-end
-
----@param file string
----@return string|nil
-local function detect_module_root(file)
-  return vim.fs.root(file, { 'pom.xml' })
-end
-
----@param start string
----@param rel string
----@return string|nil
-local function find_upward_file(start, rel)
-  local dir = start
-  while dir and dir ~= '' do
-    local candidate = dir .. '/' .. rel
-    if vim.fn.filereadable(candidate) == 1 then
-      return candidate
-    end
-    local parent = vim.fs.dirname(dir)
-    if not parent or parent == dir then
-      break
-    end
-    dir = parent
-  end
-  return nil
-end
-
----@param s string
----@param pattern string
----@return boolean
-local function contains_pattern(s, pattern)
-  return s ~= '' and s:match(pattern) ~= nil
-end
-
----@param current string
----@param arg string
----@param pattern string
----@return string
-local function append_arg_if_missing(current, arg, pattern)
-  if contains_pattern(current, pattern) then
-    return current
-  end
-  return current ~= '' and (current .. ' ' .. arg) or arg
-end
-
----@param var_name string
----@param overrides { arg: string, pattern: string }[]
-local function ensure_env_with_overrides(var_name, overrides)
-  local current = vim.env[var_name] or ''
-  for _, override in ipairs(overrides or {}) do
-    current = append_arg_if_missing(current, override.arg, override.pattern)
-  end
-  vim.env[var_name] = vim.trim(current)
-end
-
----@param extensions_xml string|nil
----@return '"legacy"'|'"develocity"'|nil
-local function detect_extensions_kind(extensions_xml)
-  if not extensions_xml then
-    return nil
-  end
-  local content = read_file(extensions_xml)
-  if content:match 'develocity%-maven%-extension' then
-    return 'develocity'
-  end
-  if content:match 'gradle%-enterprise%-maven%-extension' then
-    return 'legacy'
-  end
-  return nil
-end
-
----@param kind '"legacy"'|'"develocity"'
----@return string|nil
-local function ensure_disabled_extension_config(kind)
-  local dir = vim.fn.stdpath 'cache' .. '/jdtls/develocity'
-  local path = (kind == 'legacy')
-      and (dir .. '/gradle-enterprise-disabled.xml')
-    or (dir .. '/develocity-disabled.xml')
-  local lines = (kind == 'legacy') and {
-      '<gradleEnterprise xmlns="https://www.gradle.com/gradle-enterprise-maven">',
-      '  <enabled>false</enabled>',
-      '</gradleEnterprise>',
-    }
-    or {
-      '<develocity xmlns="https://www.gradle.com/develocity-maven">',
-      '  <enabled>false</enabled>',
-      '</develocity>',
-    }
-  vim.fn.mkdir(dir, 'p')
-  local ok = pcall(vim.fn.writefile, lines, path)
-  return ok and path or nil
 end
 
 ---@param root string
@@ -272,49 +174,10 @@ local function detect_lombok(local_repo)
 end
 
 ---@param root string
----@param file string|nil
 ---@return JavaCacheEntry
-local function build_cache(root, file)
-  local module_root = (file and detect_module_root(file)) or root
-  if not module_root or module_root == '' then
-    module_root = root
-  end
-  local cache_key = root .. '|' .. module_root
-  if cache[cache_key] then
-    return cache[cache_key]
-  end
-
-  local extensions_xml = find_upward_file(module_root, '.mvn/extensions.xml')
-  local extensions_kind = detect_extensions_kind(extensions_xml)
-  local bypass_mode = (vim.env.JDTLS_BYPASS_MVN_EXTENSIONS or 'auto'):lower()
-  local bypass_maven_extensions = extensions_kind ~= nil
-  if bypass_mode == '0' or bypass_mode == 'false' or bypass_mode == 'off' or bypass_mode == 'no' then
-    bypass_maven_extensions = false
-  elseif bypass_mode == '1' or bypass_mode == 'true' or bypass_mode == 'on' or bypass_mode == 'yes' then
-    bypass_maven_extensions = true
-  end
-
-  local develocity_user_config = nil
-  local maven_override_args = {}
-  local maven_multi_module_dir = nil
-
-  local function add_override(arg, pattern)
-    table.insert(maven_override_args, { arg = arg, pattern = pattern })
-  end
-
-  if bypass_maven_extensions and extensions_kind then
-    maven_multi_module_dir = module_root
-    add_override('-Dmaven.multiModuleProjectDirectory=' .. maven_multi_module_dir, 'maven%.multiModuleProjectDirectory=')
-    develocity_user_config = ensure_disabled_extension_config(extensions_kind)
-    if develocity_user_config then
-      add_override('-Dgradle.user.config=' .. develocity_user_config, 'gradle%.user%.config=')
-    end
-    if extensions_kind == 'legacy' then
-      add_override('-Dgradle.enterprise.enabled=false', 'gradle%.enterprise%.enabled=')
-    elseif extensions_kind == 'develocity' then
-      add_override('-Ddevelocity.enabled=false', 'develocity%.enabled=')
-    end
-    add_override('-Dscan=false', 'scan=')
+local function build_cache(root)
+  if cache[root] then
+    return cache[root]
   end
 
   local settings_xml = detect_settings_xml(root)
@@ -345,9 +208,6 @@ local function build_cache(root, file)
     end
     args = table.concat(parts, ' ')
   end
-  for _, override in ipairs(maven_override_args) do
-    args = append_arg_if_missing(args or '', override.arg, override.pattern)
-  end
 
   local c = {
     settings_xml = settings_xml,
@@ -357,16 +217,9 @@ local function build_cache(root, file)
     local_repo = local_repo,
     lombok_jar = detect_lombok(local_repo),
     maven_offline = truthy 'JDTLS_MAVEN_OFFLINE' or truthy 'MAVEN_OFFLINE',
-    module_root = module_root,
-    extensions_xml = extensions_xml,
-    extensions_kind = extensions_kind,
-    develocity_user_config = develocity_user_config,
-    bypass_maven_extensions = bypass_maven_extensions,
-    maven_override_args = maven_override_args,
-    maven_multi_module_dir = maven_multi_module_dir,
     import_args = args,
   }
-  cache[cache_key] = c
+  cache[root] = c
   return c
 end
 
@@ -376,12 +229,9 @@ end
 local function project_key(root, c)
   local seed = table.concat({
     vim.fs.normalize(root),
-    vim.fs.normalize(c.module_root),
     tostring(c.java_major),
     tostring(c.settings_xml or ''),
     tostring(c.local_repo or ''),
-    tostring(c.extensions_kind or ''),
-    tostring(c.develocity_user_config or ''),
     tostring(c.import_args or ''),
   }, '|')
   return vim.fs.basename(root) .. '-' .. vim.fn.sha256(seed):sub(1, 10)
@@ -405,16 +255,11 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   local xms, xmx = vim.env.JDTLS_XMS or '1g', vim.env.JDTLS_XMX or '4g'
   local with_lombok = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
 
-  -- Keep scan-related flags on the JDTLS JVM.
+  -- Disable Develocity/scan integrations for stable imports.
   local develocity_flags = {
     '-Dgradle.scan.disabled=true',
     '-Ddevelocity.scan.disabled=true',
   }
-  -- Also pass official extension disable/config flags at JVM level so embedded Maven sees them.
-  local maven_jvm_overrides = {}
-  for _, override in ipairs(c.maven_override_args or {}) do
-    table.insert(maven_jvm_overrides, override.arg)
-  end
 
   if jdtls_bin ~= '' then
     local cmd = {
@@ -424,9 +269,6 @@ local function resolve_cmd(config_dir, workspace_dir, c)
       '--jvm-arg=-Xmx' .. xmx,
     }
     for _, flag in ipairs(develocity_flags) do
-      table.insert(cmd, '--jvm-arg=' .. flag)
-    end
-    for _, flag in ipairs(maven_jvm_overrides) do
       table.insert(cmd, '--jvm-arg=' .. flag)
     end
     vim.list_extend(cmd, {
@@ -466,7 +308,6 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     '-Xmx' .. xmx,
     develocity_flags[1],
     develocity_flags[2],
-    unpack(maven_jvm_overrides),
     '--add-modules=ALL-SYSTEM',
     '--add-opens',
     'java.base/java.util=ALL-UNNAMED',
@@ -590,9 +431,7 @@ local function maven_sync(root, c, force)
     return
   end
 
-  local run_root = c.module_root or root
-  local cmd, mvnw = {}, run_root .. '/mvnw'
-  local pom_path = run_root .. '/pom.xml'
+  local cmd, mvnw = {}, root .. '/mvnw'
   if vim.fn.executable(mvnw) == 1 then
     table.insert(cmd, mvnw)
   elseif vim.fn.executable 'mvn' == 1 then
@@ -617,15 +456,6 @@ local function maven_sync(root, c, force)
   if force then
     table.insert(cmd, '-U')
   end
-  for _, override in ipairs(c.maven_override_args or {}) do
-    local sync_flags = vim.env.JDTLS_MAVEN_SYNC_FLAGS or ''
-    if not contains_pattern(sync_flags, override.pattern) then
-      table.insert(cmd, override.arg)
-    end
-  end
-  if run_root ~= root and vim.fn.filereadable(pom_path) == 1 then
-    vim.list_extend(cmd, { '-f', pom_path })
-  end
 
   vim.list_extend(cmd, split_words(vim.env.JDTLS_MAVEN_SYNC_FLAGS or '-DskipTests -DskipITs -Dmaven.test.skip=true'))
   local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources')
@@ -637,14 +467,9 @@ local function maven_sync(root, c, force)
   end
 
   sync_running[root] = true
-  vim.g.ba_jdtls_last_sync = {
-    root_dir = root,
-    module_root = run_root,
-    cmd = vim.deepcopy(cmd),
-  }
   vim.notify('[java3] Running: ' .. table.concat(cmd, ' '), vim.log.levels.INFO)
   ---@param result { code: integer, stdout: string|nil, stderr: string|nil }
-  vim.system(cmd, { cwd = run_root, text = true }, function(result)
+  vim.system(cmd, { cwd = root, text = true }, function(result)
     vim.schedule(function()
       sync_running[root] = nil
       if result.code == 0 then
@@ -710,13 +535,7 @@ return {
           return
         end
 
-        local c = build_cache(root, file)
-        ensure_env_with_overrides('MAVEN_OPTS', c.maven_override_args)
-        ensure_env_with_overrides('JAVA_TOOL_OPTIONS', c.maven_override_args)
-        ensure_env_with_overrides('JDK_JAVA_OPTIONS', c.maven_override_args)
-        if c.bypass_maven_extensions and c.module_root and c.module_root ~= '' then
-          vim.env.MAVEN_PROJECTBASEDIR = c.module_root
-        end
+        local c = build_cache(root)
         local key = project_key(root, c)
         local config_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/config'
         local workspace_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/workspace'
@@ -744,25 +563,13 @@ return {
 
         vim.g.ba_jdtls_last = {
           root_dir = root,
-          module_root = c.module_root,
           settings_xml = c.settings_xml,
           local_repo = c.local_repo,
           maven_import_arguments = c.import_args,
-          extensions_xml = c.extensions_xml,
-          extensions_kind = c.extensions_kind,
-          develocity_user_config = c.develocity_user_config,
-          bypass_maven_extensions = c.bypass_maven_extensions,
-          maven_override_args = c.maven_override_args,
-          maven_multi_module_dir = c.maven_multi_module_dir,
-          maven_projectbasedir = vim.env.MAVEN_PROJECTBASEDIR,
-          maven_opts = vim.env.MAVEN_OPTS,
-          java_tool_options = vim.env.JAVA_TOOL_OPTIONS,
-          jdk_java_options = vim.env.JDK_JAVA_OPTIONS,
           java_major = c.java_major,
           java_home = c.java_home,
           lombok_jar = c.lombok_jar,
           cmd_source = cmd_source,
-          cmd = vim.deepcopy(cmd),
           workspace_dir = workspace_dir,
         }
 
@@ -787,7 +594,7 @@ return {
             vim.notify('[java3] Cannot sync: no Java root detected.', vim.log.levels.WARN)
             return
           end
-          maven_sync(root, build_cache(root, file), command_opts.bang)
+          maven_sync(root, build_cache(root), command_opts.bang)
         end, {
           bang = true,
           desc = 'Run Maven generate-sources for current root (! adds -U)',

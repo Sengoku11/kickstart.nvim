@@ -242,6 +242,7 @@ end
 ---@param c JavaCacheEntry
 ---@return string[]|nil, string|nil
 local function resolve_cmd(config_dir, workspace_dir, c)
+  -- 1. Locate Java Executable
   local java_bin = vim.env.JDTLS_JAVA_BIN
   if not java_bin or java_bin == '' then
     local from_home = c.java_home and (c.java_home .. '/bin/java') or nil
@@ -251,88 +252,98 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     java_bin = 'java'
   end
 
-  local jdtls_bin = (vim.env.JDTLS_BIN and vim.fn.executable(vim.env.JDTLS_BIN) == 1) and vim.env.JDTLS_BIN or vim.fn.exepath 'jdtls'
-  local xms, xmx = vim.env.JDTLS_XMS or '1g', vim.env.JDTLS_XMX or '4g'
-  local with_lombok = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
-
-  -- FIX: Force disable flags via Environment Variable
-  -- This bypasses wrapper script issues where --jvm-arg might be misplaced/ignored.
-  -- We include both Legacy (Gradle Ent) and New (Develocity) flags.
-  local disable_flags = ' -Dgradle.scan.disabled=true -Ddevelocity.scan.disabled=true'
-
-  -- Append to existing options or set new ones.
-  -- This affects the JDTLS process spawned by Neovim.
-  local existing_opts = vim.env.JDK_JAVA_OPTIONS or ''
-  if not string.find(existing_opts, 'gradle.scan.disabled') then
-    vim.env.JDK_JAVA_OPTIONS = existing_opts .. disable_flags
+  -- 2. Locate JDTLS Home (Try Mason path first)
+  local jdtls_home = vim.env.JDTLS_HOME
+  local mason_path = vim.fn.stdpath 'data' .. '/mason/packages/jdtls'
+  if (not jdtls_home or jdtls_home == '') and vim.fn.isdirectory(mason_path) == 1 then
+    jdtls_home = mason_path
   end
 
-  if jdtls_bin ~= '' then
-    local cmd = {
-      jdtls_bin,
-      '--java-executable=' .. java_bin,
-      '--jvm-arg=-Xms' .. xms,
-      '--jvm-arg=-Xmx' .. xmx,
-    }
-
-    vim.list_extend(cmd, {
-      '-configuration',
-      config_dir,
-      '-data',
-      workspace_dir,
-    })
-
-    if with_lombok and c.lombok_jar then
-      -- Keep the agent close to the JVM arguments for predictable startup order.
-      table.insert(cmd, 4, '--jvm-arg=-javaagent:' .. c.lombok_jar)
-    end
-    return cmd, 'jdtls-bin'
+  -- 3. Locate Launcher JAR and Config
+  local launcher = ''
+  local os_config = ''
+  if jdtls_home and jdtls_home ~= '' then
+    launcher = vim.fn.glob(jdtls_home .. '/plugins/org.eclipse.equinox.launcher_*.jar', true, true)[1]
+    local os_name = vim.fn.has 'macunix' == 1 and 'config_mac' or (vim.fn.has 'win32' == 1 and 'config_win' or 'config_linux')
+    os_config = jdtls_home .. '/' .. os_name
   end
 
-  -- Fallback: Manual JAR Launcher (Direct Java Control)
-  local home = vim.env.JDTLS_HOME
-  if not home or home == '' or vim.fn.isdirectory(home) ~= 1 then
-    return nil, nil
-  end
-  local launcher = vim.fn.glob(home .. '/plugins/org.eclipse.equinox.launcher_*.jar', true, true)[1]
-    or vim.fn.glob(home .. '/plugins/org.eclipse.equinox.launcher.jar', true, true)[1]
-  local os_cfg = vim.fn.has 'macunix' == 1 and 'config_mac' or (vim.fn.has 'win32' == 1 and 'config_win' or 'config_linux')
-  local os_cfg_dir = home .. '/' .. os_cfg
-  if not launcher or launcher == '' or vim.fn.isdirectory(os_cfg_dir) ~= 1 then
-    return nil, nil
-  end
-
-  local cmd = {
-    java_bin,
+  -- 4. Define Flags (Directly to JVM)
+  local jvm_args = {
     '-Declipse.application=org.eclipse.jdt.ls.core.id1',
     '-Dosgi.bundles.defaultStartLevel=4',
     '-Declipse.product=org.eclipse.jdt.ls.core.product',
     '-Dlog.protocol=true',
     '-Dlog.level=WARN',
-    '-Xms' .. xms,
-    '-Xmx' .. xmx,
-    -- NOTE: disable flags are now handled by JDK_JAVA_OPTIONS env var above,
-    -- but we can keep explicit ones here as backup since we control `java` directly.
-    '-Dgradle.scan.disabled=true',
-    '-Ddevelocity.scan.disabled=true',
+    '-Xms1g',
+    '-Xmx4g',
     '--add-modules=ALL-SYSTEM',
     '--add-opens',
     'java.base/java.util=ALL-UNNAMED',
     '--add-opens',
     'java.base/java.lang=ALL-UNNAMED',
-    '-jar',
-    launcher,
-    '-configuration',
-    os_cfg_dir,
-    '-data',
-    workspace_dir,
+
+    -- [CRITICAL FIX] Disable Develocity / Gradle Enterprise Extensions
+    '-Dgradle.scan.disabled=true',
+    '-Ddevelocity.scan.disabled=true',
+    '-Dskip.gradle.scan=true',
   }
 
-  if with_lombok and c.lombok_jar then
-    -- Keep the java agent before module/open flags.
-    table.insert(cmd, 9, '-javaagent:' .. c.lombok_jar)
+  -- 5. Construct Command
+  local cmd = {}
+
+  -- PATH A: Direct Launch (Preferred - bypasses wrapper scripts)
+  if launcher ~= '' and vim.fn.isdirectory(os_config) == 1 then
+    table.insert(cmd, java_bin)
+    for _, arg in ipairs(jvm_args) do
+      table.insert(cmd, arg)
+    end
+
+    -- Lombok
+    if not truthy 'JDTLS_DISABLE_LOMBOK_AGENT' and c.lombok_jar then
+      table.insert(cmd, '-javaagent:' .. c.lombok_jar)
+    end
+
+    -- JDTLS specifics
+    vim.list_extend(cmd, {
+      '-jar',
+      launcher,
+      '-configuration',
+      os_config,
+      '-data',
+      workspace_dir,
+    })
+    return cmd, 'jdtls-direct'
+
+  -- PATH B: Wrapper Fallback (If manual path detection fails)
+  else
+    local jdtls_bin = vim.fn.exepath 'jdtls'
+    if jdtls_bin ~= '' then
+      cmd = { jdtls_bin, '--java-executable=' .. java_bin }
+
+      -- Inject flags via --jvm-arg
+      for _, arg in ipairs(jvm_args) do
+        -- Filter out non-flag args if necessary, but usually safe to pass all
+        if vim.startswith(arg, '-') then
+          table.insert(cmd, '--jvm-arg=' .. arg)
+        end
+      end
+
+      vim.list_extend(cmd, {
+        '-configuration',
+        config_dir,
+        '-data',
+        workspace_dir,
+      })
+
+      if not truthy 'JDTLS_DISABLE_LOMBOK_AGENT' and c.lombok_jar then
+        table.insert(cmd, '--jvm-arg=-javaagent:' .. c.lombok_jar)
+      end
+      return cmd, 'jdtls-wrapper'
+    end
   end
-  return cmd, 'jdtls-home'
+
+  return nil, 'error-no-jdtls'
 end
 
 ---@param base table|nil

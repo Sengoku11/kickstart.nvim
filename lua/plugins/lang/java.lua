@@ -107,6 +107,16 @@ local function append_arg_if_missing(current, arg, pattern)
   return current ~= '' and (current .. ' ' .. arg) or arg
 end
 
+---@param var_name string
+---@param overrides { arg: string, pattern: string }[]
+local function ensure_env_with_overrides(var_name, overrides)
+  local current = vim.env[var_name] or ''
+  for _, override in ipairs(overrides or {}) do
+    current = append_arg_if_missing(current, override.arg, override.pattern)
+  end
+  vim.env[var_name] = vim.trim(current)
+end
+
 ---@param extensions_xml string|nil
 ---@return '"legacy"'|'"develocity"'|nil
 local function detect_extensions_kind(extensions_xml)
@@ -390,11 +400,16 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   local xms, xmx = vim.env.JDTLS_XMS or '1g', vim.env.JDTLS_XMX or '4g'
   local with_lombok = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
 
-  -- Disable Develocity/scan integrations for stable imports.
+  -- Keep scan-related flags on the JDTLS JVM.
   local develocity_flags = {
     '-Dgradle.scan.disabled=true',
     '-Ddevelocity.scan.disabled=true',
   }
+  -- Also pass official extension disable/config flags at JVM level so embedded Maven sees them.
+  local maven_jvm_overrides = {}
+  for _, override in ipairs(c.maven_override_args or {}) do
+    table.insert(maven_jvm_overrides, override.arg)
+  end
 
   if jdtls_bin ~= '' then
     local cmd = {
@@ -404,6 +419,9 @@ local function resolve_cmd(config_dir, workspace_dir, c)
       '--jvm-arg=-Xmx' .. xmx,
     }
     for _, flag in ipairs(develocity_flags) do
+      table.insert(cmd, '--jvm-arg=' .. flag)
+    end
+    for _, flag in ipairs(maven_jvm_overrides) do
       table.insert(cmd, '--jvm-arg=' .. flag)
     end
     vim.list_extend(cmd, {
@@ -443,6 +461,7 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     '-Xmx' .. xmx,
     develocity_flags[1],
     develocity_flags[2],
+    unpack(maven_jvm_overrides),
     '--add-modules=ALL-SYSTEM',
     '--add-opens',
     'java.base/java.util=ALL-UNNAMED',
@@ -613,6 +632,11 @@ local function maven_sync(root, c, force)
   end
 
   sync_running[root] = true
+  vim.g.ba_jdtls_last_sync = {
+    root_dir = root,
+    module_root = run_root,
+    cmd = vim.deepcopy(cmd),
+  }
   vim.notify('[java3] Running: ' .. table.concat(cmd, ' '), vim.log.levels.INFO)
   ---@param result { code: integer, stdout: string|nil, stderr: string|nil }
   vim.system(cmd, { cwd = run_root, text = true }, function(result)
@@ -682,6 +706,9 @@ return {
         end
 
         local c = build_cache(root, file)
+        ensure_env_with_overrides('MAVEN_OPTS', c.maven_override_args)
+        ensure_env_with_overrides('JAVA_TOOL_OPTIONS', c.maven_override_args)
+        ensure_env_with_overrides('JDK_JAVA_OPTIONS', c.maven_override_args)
         local key = project_key(root, c)
         local config_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/config'
         local workspace_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/workspace'
@@ -718,10 +745,14 @@ return {
           develocity_user_config = c.develocity_user_config,
           bypass_maven_extensions = c.bypass_maven_extensions,
           maven_override_args = c.maven_override_args,
+          maven_opts = vim.env.MAVEN_OPTS,
+          java_tool_options = vim.env.JAVA_TOOL_OPTIONS,
+          jdk_java_options = vim.env.JDK_JAVA_OPTIONS,
           java_major = c.java_major,
           java_home = c.java_home,
           lombok_jar = c.lombok_jar,
           cmd_source = cmd_source,
+          cmd = vim.deepcopy(cmd),
           workspace_dir = workspace_dir,
         }
 

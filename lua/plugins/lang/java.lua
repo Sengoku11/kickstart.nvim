@@ -242,17 +242,23 @@ end
 ---@param c JavaCacheEntry
 ---@return string[]|nil, string|nil
 local function resolve_cmd(config_dir, workspace_dir, c)
+  -- Helper to safely check boolean env vars without crashing if 'truthy' is missing
+  local function is_enabled(env_var)
+    local val = vim.env[env_var]
+    return val and val ~= '0' and val ~= 'false' and val ~= ''
+  end
+
   -- 1. Locate Java Executable
   local java_bin = vim.env.JDTLS_JAVA_BIN
   if not java_bin or java_bin == '' then
-    local from_home = c.java_home and (c.java_home .. '/bin/java') or nil
+    local from_home = c and c.java_home and (c.java_home .. '/bin/java') or nil
     java_bin = (from_home and vim.fn.executable(from_home) == 1) and from_home or vim.fn.exepath 'java'
   end
   if java_bin == '' then
     java_bin = 'java'
   end
 
-  -- 2. Locate JDTLS Home (Try Mason path first)
+  -- 2. Locate JDTLS Home (Try Mason path first, then env)
   local jdtls_home = vim.env.JDTLS_HOME
   local mason_path = vim.fn.stdpath 'data' .. '/mason/packages/jdtls'
   if (not jdtls_home or jdtls_home == '') and vim.fn.isdirectory(mason_path) == 1 then
@@ -260,12 +266,22 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   end
 
   -- 3. Locate Launcher JAR and Config
-  local launcher = ''
-  local os_config = ''
-  if jdtls_home and jdtls_home ~= '' then
-    launcher = vim.fn.glob(jdtls_home .. '/plugins/org.eclipse.equinox.launcher_*.jar', true, true)[1]
+  local launcher = nil
+  local os_config = nil
+
+  if jdtls_home and jdtls_home ~= '' and vim.fn.isdirectory(jdtls_home) == 1 then
+    local launchers = vim.fn.glob(jdtls_home .. '/plugins/org.eclipse.equinox.launcher_*.jar', true, true)
+    if type(launchers) == 'table' and #launchers > 0 then
+      launcher = launchers[1]
+    elseif type(launchers) == 'string' and launchers ~= '' then
+      launcher = launchers
+    end
+
     local os_name = vim.fn.has 'macunix' == 1 and 'config_mac' or (vim.fn.has 'win32' == 1 and 'config_win' or 'config_linux')
-    os_config = jdtls_home .. '/' .. os_name
+    local candidate_os = jdtls_home .. '/' .. os_name
+    if vim.fn.isdirectory(candidate_os) == 1 then
+      os_config = candidate_os
+    end
   end
 
   -- 4. Define Flags (Directly to JVM)
@@ -293,14 +309,14 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   local cmd = {}
 
   -- PATH A: Direct Launch (Preferred - bypasses wrapper scripts)
-  if launcher ~= '' and vim.fn.isdirectory(os_config) == 1 then
+  if launcher and os_config then
     table.insert(cmd, java_bin)
     for _, arg in ipairs(jvm_args) do
       table.insert(cmd, arg)
     end
 
     -- Lombok
-    if not truthy 'JDTLS_DISABLE_LOMBOK_AGENT' and c.lombok_jar then
+    if not is_enabled 'JDTLS_DISABLE_LOMBOK_AGENT' and c and c.lombok_jar then
       table.insert(cmd, '-javaagent:' .. c.lombok_jar)
     end
 
@@ -317,14 +333,15 @@ local function resolve_cmd(config_dir, workspace_dir, c)
 
   -- PATH B: Wrapper Fallback (If manual path detection fails)
   else
-    local jdtls_bin = vim.fn.exepath 'jdtls'
+    local jdtls_bin = vim.env.JDTLS_BIN or vim.fn.exepath 'jdtls'
     if jdtls_bin ~= '' then
       cmd = { jdtls_bin, '--java-executable=' .. java_bin }
 
       -- Inject flags via --jvm-arg
       for _, arg in ipairs(jvm_args) do
-        -- Filter out non-flag args if necessary, but usually safe to pass all
-        if vim.startswith(arg, '-') then
+        -- Only inject arguments starting with -D or -X or -javaagent
+        -- (Wrapper scripts sometimes choke on --add-opens if passed incorrectly, but usually fine)
+        if string.sub(arg, 1, 1) == '-' then
           table.insert(cmd, '--jvm-arg=' .. arg)
         end
       end
@@ -336,7 +353,7 @@ local function resolve_cmd(config_dir, workspace_dir, c)
         workspace_dir,
       })
 
-      if not truthy 'JDTLS_DISABLE_LOMBOK_AGENT' and c.lombok_jar then
+      if not is_enabled 'JDTLS_DISABLE_LOMBOK_AGENT' and c and c.lombok_jar then
         table.insert(cmd, '--jvm-arg=-javaagent:' .. c.lombok_jar)
       end
       return cmd, 'jdtls-wrapper'

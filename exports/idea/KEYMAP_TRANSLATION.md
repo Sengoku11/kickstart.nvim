@@ -42,7 +42,7 @@ Legend:
 | `<leader>/` | `lua/plugins/editor/snacks-picker.lua:86` | Grep | `FindInPath` | Exact |
 | `<leader>:` | `lua/plugins/editor/snacks-picker.lua:87` | Command history | `GotoAction` | Approx |
 | `<leader>n` | `lua/plugins/editor/snacks-picker.lua:88` | Notification history | `Notifications` | Approx |
-| `<leader>e` / `\` | `lua/plugins/editor/snacks-picker.lua:89-90` | Toggle explorer | `ProjectViewToggle` when available, fallback to stateful wrapper (`ActivateProjectToolWindow` + `HideActiveWindow`) | Approx |
+| `<leader>e` / `\` | `lua/plugins/editor/snacks-picker.lua:89-90` | Toggle explorer | `NERDTreeToggle` (IdeaVim Project-panel navigation), fallback to stateful wrapper (`ActivateProjectToolWindow` + `HideActiveWindow`) | Approx |
 | `<leader>fb` | `lua/plugins/editor/snacks-picker.lua:93` | Buffers | `RecentFiles` | Approx |
 | `<leader>fc` | `lua/plugins/editor/snacks-picker.lua:94` | Find config file | `GotoFile` | Approx |
 | `<leader>ff` | `lua/plugins/editor/snacks-picker.lua:95` | Find files | `GotoFile` | Exact |

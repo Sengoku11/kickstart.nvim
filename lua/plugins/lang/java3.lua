@@ -100,7 +100,7 @@ local function detect_local_repo(settings_content)
   if vim.env.MAVEN_REPO_LOCAL and vim.fn.isdirectory(vim.env.MAVEN_REPO_LOCAL) == 1 then
     return vim.fs.normalize(vim.env.MAVEN_REPO_LOCAL)
   end
-  local repo = settings_content:match('<localRepository>%s*(.-)%s*</localRepository>')
+  local repo = settings_content:match '<localRepository>%s*(.-)%s*</localRepository>'
   if repo and repo ~= '' then
     repo = vim.fn.expand(repo:gsub('${user.home}', vim.fn.expand '~'))
     if vim.fn.isdirectory(repo) == 1 then
@@ -200,18 +200,33 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   local xms, xmx = vim.env.JDTLS_XMS or '1g', vim.env.JDTLS_XMX or '4g'
   local with_lombok = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
 
+  -- FIX: Flags to prevent Develocity extension from crashing JDTLS import
+  local develocity_flags = {
+    '-Dgradle.scan.disabled=true',
+    '-Ddevelocity.scan.disabled=true',
+  }
+
   if jdtls_bin ~= '' then
     local cmd = {
       jdtls_bin,
       '--java-executable=' .. java_bin,
       '--jvm-arg=-Xms' .. xms,
       '--jvm-arg=-Xmx' .. xmx,
+    }
+    -- Inject develocity flags
+    for _, flag in ipairs(develocity_flags) do
+      table.insert(cmd, '--jvm-arg=' .. flag)
+    end
+    -- Continue with standard args
+    vim.list_extend(cmd, {
       '-configuration',
       config_dir,
       '-data',
       workspace_dir,
-    }
+    })
+
     if with_lombok and c.lombok_jar then
+      -- Insert agent early in args (index 4 is safe, after java executable arg)
       table.insert(cmd, 4, '--jvm-arg=-javaagent:' .. c.lombok_jar)
     end
     return cmd, 'jdtls-bin'
@@ -238,6 +253,8 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     '-Dlog.level=WARN',
     '-Xms' .. xms,
     '-Xmx' .. xmx,
+    develocity_flags[1], -- [FIX]
+    develocity_flags[2], -- [FIX]
     '--add-modules=ALL-SYSTEM',
     '--add-opens',
     'java.base/java.util=ALL-UNNAMED',
@@ -251,6 +268,7 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     workspace_dir,
   }
   if with_lombok and c.lombok_jar then
+    -- Insert before flags/modules (index 9 puts it after Xmx and before new flags)
     table.insert(cmd, 9, '-javaagent:' .. c.lombok_jar)
   end
   return cmd, 'jdtls-home'

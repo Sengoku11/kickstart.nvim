@@ -1,137 +1,141 @@
 local java_filetypes = { 'java' }
-local project_cache = {}
+local cache = {}
+local sync_running = {}
 
-local function env_truthy(name)
-  local value = vim.env[name]
-  if not value then
-    return false
-  end
-  value = value:lower()
-  return value == '1' or value == 'true' or value == 'yes' or value == 'on'
+local function truthy(name)
+  local v = vim.env[name]
+  return v and ({ ['1'] = true, ['true'] = true, ['yes'] = true, ['on'] = true })[v:lower()] or false
 end
 
 local function read_file(path)
   local ok, lines = pcall(vim.fn.readfile, path)
-  if not ok or not lines then
-    return nil
-  end
-  return table.concat(lines, '\n')
+  return ok and type(lines) == 'table' and table.concat(lines, '\n') or ''
 end
 
-local function each_parent_dir(start_dir, cb)
-  if not start_dir or start_dir == '' then
-    return false
+local function split_words(s)
+  return (s and s ~= '') and vim.split(s, '%s+', { trimempty = true }) or {}
+end
+
+local function detect_root(file)
+  local mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower()
+  local project_root = vim.fs.root(file, { '.mvn', 'mvnw' })
+  local module_root = vim.fs.root(file, { 'pom.xml' })
+  if mode == 'module' then
+    return module_root or project_root or vim.fs.root(file, { '.git' })
   end
+  return project_root or module_root or vim.fs.root(file, { '.git' })
+end
 
-  local dir = vim.fs.normalize(start_dir)
+local function detect_settings_xml(root)
+  local explicit = vim.env.JDTLS_SETTINGS_XML
+  if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
+    return explicit
+  end
+  local dir = root
   while dir and dir ~= '' do
-    if cb(dir) then
-      return true
+    local p1, p2 = dir .. '/settings.xml', dir .. '/.mvn/settings.xml'
+    if vim.fn.filereadable(p1) == 1 then
+      return p1
     end
-
+    if vim.fn.filereadable(p2) == 1 then
+      return p2
+    end
     local parent = vim.fs.dirname(dir)
     if not parent or parent == dir then
       break
     end
     dir = parent
   end
-
-  return false
-end
-
-local function extend_or_override(base, override)
-  if type(override) == 'table' then
-    return vim.tbl_deep_extend('force', base, override)
-  end
-
-  if type(override) == 'function' then
-    local ok, result = pcall(override, vim.deepcopy(base))
-    if ok and type(result) == 'table' then
-      return vim.tbl_deep_extend('force', base, result)
-    end
-  end
-
-  return base
-end
-
-local function root_markers()
-  local lsp_config = vim.lsp and vim.lsp.config or nil
-  local markers = lsp_config and lsp_config.jdtls and lsp_config.jdtls.root_markers
-  if type(markers) == 'table' and #markers > 0 then
-    return markers
-  end
-
-  return {
-    '.git',
-    'mvnw',
-    'gradlew',
-    'pom.xml',
-    'build.gradle',
-    'build.gradle.kts',
-  }
-end
-
-local function detect_root_dir(path)
-  local file_dir = vim.fs.dirname(path)
-  local maven_root = nil
-
-  each_parent_dir(file_dir, function(dir)
-    if vim.fn.isdirectory(dir .. '/.mvn') == 1 or vim.fn.filereadable(dir .. '/mvnw') == 1 then
-      maven_root = dir
-      return true
-    end
-    return false
-  end)
-
-  if maven_root then
-    return maven_root
-  end
-
-  return vim.fs.root(path, root_markers())
-end
-
-local function detect_settings_xml(root_dir)
-  local discovered = nil
-
-  each_parent_dir(root_dir, function(dir)
-    local project_settings = dir .. '/settings.xml'
-    if vim.fn.filereadable(project_settings) == 1 then
-      discovered = project_settings
-      return true
-    end
-
-    local mvn_settings = dir .. '/.mvn/settings.xml'
-    if vim.fn.filereadable(mvn_settings) == 1 then
-      discovered = mvn_settings
-      return true
-    end
-
-    return false
-  end)
-
-  if discovered then
-    return discovered
-  end
-
   local fallback = vim.fn.expand '~/.m2/settings.xml'
-  if vim.fn.filereadable(fallback) == 1 then
-    return fallback
-  end
+  return vim.fn.filereadable(fallback) == 1 and fallback or nil
+end
 
+local function first_tag(content, patterns)
+  for _, p in ipairs(patterns) do
+    local v = content:match(p)
+    if v and v ~= '' then
+      return v
+    end
+  end
   return nil
 end
 
-local function infer_java_version_from_settings(settings_xml)
-  if not settings_xml then
-    return '17'
+local function java_major(version)
+  local n = tonumber((version or ''):match '^(%d+)')
+  if not n then
+    return 17
+  end
+  if n == 1 then
+    return tonumber((version or ''):match '^1%.(%d+)') or 8
+  end
+  return n
+end
+
+local function detect_java_home(major)
+  if vim.env.JDTLS_JAVA_HOME and vim.fn.isdirectory(vim.env.JDTLS_JAVA_HOME) == 1 then
+    return vim.env.JDTLS_JAVA_HOME
+  end
+  if vim.fn.executable '/usr/libexec/java_home' == 1 then
+    local out = vim.fn.systemlist { '/usr/libexec/java_home', '-v', tostring(major) }
+    if vim.v.shell_error == 0 and out[1] and vim.fn.isdirectory(out[1]) == 1 then
+      return out[1]
+    end
+  end
+  if vim.env.JAVA_HOME and vim.fn.isdirectory(vim.env.JAVA_HOME) == 1 then
+    return vim.env.JAVA_HOME
+  end
+  return nil
+end
+
+local function detect_global_settings()
+  local m2_home = vim.env.M2_HOME or vim.env.MAVEN_HOME
+  if not m2_home or m2_home == '' then
+    return nil
+  end
+  local p = m2_home .. '/conf/settings.xml'
+  return vim.fn.filereadable(p) == 1 and p or nil
+end
+
+local function detect_local_repo(settings_content)
+  if vim.env.MAVEN_REPO_LOCAL and vim.fn.isdirectory(vim.env.MAVEN_REPO_LOCAL) == 1 then
+    return vim.fs.normalize(vim.env.MAVEN_REPO_LOCAL)
+  end
+  local repo = settings_content:match '<localRepository>%s*(.-)%s*</localRepository>'
+  if repo and repo ~= '' then
+    repo = vim.fn.expand(repo:gsub('${user.home}', vim.fn.expand '~'))
+    if vim.fn.isdirectory(repo) == 1 then
+      return vim.fs.normalize(repo)
+    end
+  end
+  local fallback = vim.fs.normalize(vim.fn.expand '~/.m2/repository')
+  return vim.fn.isdirectory(fallback) == 1 and fallback or nil
+end
+
+local function detect_lombok(local_repo)
+  local explicit = vim.env.JDTLS_LOMBOK_JAR
+  if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
+    return explicit
+  end
+  if not local_repo then
+    return nil
+  end
+  local jars = vim.fn.glob(local_repo .. '/org/projectlombok/lombok/*/lombok-*.jar', true, true)
+  if type(jars) ~= 'table' or vim.tbl_isempty(jars) then
+    return nil
+  end
+  table.sort(jars)
+  return jars[#jars]
+end
+
+local function build_cache(root)
+  if cache[root] then
+    return cache[root]
   end
 
-  local content = read_file(settings_xml)
-  if not content then
-    return '17'
-  end
-
-  local tag_patterns = {
+  local settings_xml = detect_settings_xml(root)
+  local settings = settings_xml and read_file(settings_xml) or ''
+  local pom = read_file(root .. '/pom.xml')
+  local version_patterns = {
     '<maven%.compiler%.release>%s*([%d%.]+)%s*</maven%.compiler%.release>',
     '<maven%.compiler%.source>%s*([%d%.]+)%s*</maven%.compiler%.source>',
     '<java%.version>%s*([%d%.]+)%s*</java%.version>',
@@ -140,257 +144,80 @@ local function infer_java_version_from_settings(settings_xml)
     '<source>%s*([%d%.]+)%s*</source>',
   }
 
-  for _, pattern in ipairs(tag_patterns) do
-    local version = content:match(pattern)
-    if version and version ~= '' then
-      return version
+  local major = java_major(vim.env.JDTLS_JAVA_VERSION or first_tag(settings, version_patterns) or first_tag(pom, version_patterns) or '17')
+  local local_repo = detect_local_repo(settings)
+  local args = vim.env.JDTLS_MAVEN_IMPORT_ARGUMENTS
+  if not args or args == '' then
+    local parts = {}
+    if local_repo then
+      table.insert(parts, '-Dmaven.repo.local=' .. local_repo)
     end
-  end
-
-  return '17'
-end
-
-local function normalize_java_version(version)
-  if not version or version == '' then
-    return 17
-  end
-
-  local major = version:match '^(%d+)'
-  if not major then
-    return 17
-  end
-
-  local num = tonumber(major)
-  if not num then
-    return 17
-  end
-
-  if num == 1 then
-    local legacy = version:match '^1%.(%d+)'
-    return tonumber(legacy) or 8
-  end
-
-  return num
-end
-
-local function detect_java_home(version_major)
-  if vim.fn.executable '/usr/libexec/java_home' == 1 then
-    local out = vim.fn.systemlist { '/usr/libexec/java_home', '-v', tostring(version_major) }
-    if vim.v.shell_error == 0 and out and out[1] and out[1] ~= '' and vim.fn.isdirectory(out[1]) == 1 then
-      return out[1]
+    if vim.env.JDTLS_MAVEN_PROFILES and vim.env.JDTLS_MAVEN_PROFILES ~= '' then
+      table.insert(parts, '-P' .. vim.env.JDTLS_MAVEN_PROFILES:gsub('%s+', ''))
     end
-  end
-
-  local java_home_env = vim.env.JAVA_HOME
-  if java_home_env and java_home_env ~= '' and vim.fn.isdirectory(java_home_env) == 1 then
-    return java_home_env
-  end
-
-  return nil
-end
-
-local function infer_local_repo_from_settings(settings_xml)
-  if not settings_xml then
-    return nil
-  end
-
-  local content = read_file(settings_xml)
-  if not content then
-    return nil
-  end
-
-  local repo = content:match '<localRepository>%s*(.-)%s*</localRepository>'
-  if not repo or repo == '' then
-    return nil
-  end
-
-  repo = repo:gsub('${user.home}', vim.fn.expand '~')
-  repo = vim.fn.expand(repo)
-
-  if vim.fn.isdirectory(repo) == 1 then
-    return repo
-  end
-
-  return nil
-end
-
-local function detect_maven_local_repo(settings_xml)
-  local repo = vim.env.MAVEN_REPO_LOCAL
-  if repo and repo ~= '' and vim.fn.isdirectory(repo) == 1 then
-    return repo
-  end
-
-  repo = infer_local_repo_from_settings(settings_xml)
-  if repo then
-    return repo
-  end
-
-  local fallback = vim.fn.expand '~/.m2/repository'
-  if vim.fn.isdirectory(fallback) == 1 then
-    return fallback
-  end
-
-  return nil
-end
-
-local function detect_maven_global_settings()
-  local m2_home = vim.env.M2_HOME or vim.env.MAVEN_HOME
-  if not m2_home or m2_home == '' then
-    return nil
-  end
-
-  local candidate = m2_home .. '/conf/settings.xml'
-  if vim.fn.filereadable(candidate) == 1 then
-    return candidate
-  end
-
-  return nil
-end
-
-local function detect_lombok_jar(local_repo)
-  if not local_repo then
-    return nil
-  end
-
-  local jars = vim.fn.glob(local_repo .. '/org/projectlombok/lombok/*/lombok-*.jar', true, true)
-  if type(jars) ~= 'table' or vim.tbl_isempty(jars) then
-    return nil
-  end
-
-  table.sort(jars)
-  return jars[#jars]
-end
-
-local function has_gradle_enterprise_maven_extension(root_dir)
-  local detected = false
-
-  each_parent_dir(root_dir, function(dir)
-    local extensions_xml = dir .. '/.mvn/extensions.xml'
-    if vim.fn.filereadable(extensions_xml) ~= 1 then
-      return false
+    if vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS and vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS ~= '' then
+      vim.list_extend(parts, split_words(vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS))
     end
-
-    local content = read_file(extensions_xml)
-    if not content then
-      return false
-    end
-
-    local lowered = content:lower()
-    local match = lowered:find('gradle%-enterprise%-maven%-extension', 1, false) ~= nil
-      or lowered:find('develocity%-maven%-extension', 1, false) ~= nil
-      or lowered:find('com%.gradle', 1, false) ~= nil
-
-    if match then
-      detected = true
-      return true
-    end
-
-    return false
-  end)
-
-  return detected
-end
-
-local function detect_lifecycle_mappings_file(root_dir)
-  local explicit = vim.env.JDTLS_M2E_LIFECYCLE_MAPPINGS
-  if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
-    return explicit
+    args = table.concat(parts, ' ')
   end
 
-  local discovered = nil
-  each_parent_dir(root_dir, function(dir)
-    local candidates = {
-      dir .. '/.mvn/lifecycle-mapping-metadata.xml',
-      dir .. '/m2e-lifecycle-mapping.xml',
-    }
-
-    for _, file in ipairs(candidates) do
-      if vim.fn.filereadable(file) == 1 then
-        discovered = file
-        return true
-      end
-    end
-
-    return false
-  end)
-
-  if discovered then
-    return discovered
-  end
-
-  local fallback = vim.fn.stdpath 'config' .. '/m2e-lifecycle-mapping.xml'
-  if vim.fn.filereadable(fallback) == 1 then
-    return fallback
-  end
-
-  return nil
-end
-
-local function derive_project_key(root_dir)
-  local normalized = vim.fs.normalize(root_dir)
-  local base = vim.fs.basename(normalized)
-  local hash = vim.fn.sha256(normalized):sub(1, 10)
-  return base .. '-' .. hash
-end
-
-local function get_project_cache(root_dir)
-  if project_cache[root_dir] then
-    return project_cache[root_dir]
-  end
-
-  local settings_xml = detect_settings_xml(root_dir)
-  local java_version_major = normalize_java_version(infer_java_version_from_settings(settings_xml))
-
-  local cached = {
+  local c = {
     settings_xml = settings_xml,
-    global_settings_xml = detect_maven_global_settings(),
-    lifecycle_mappings_xml = detect_lifecycle_mappings_file(root_dir),
-    java_version_major = java_version_major,
-    java_home = detect_java_home(java_version_major),
-    local_repo = detect_maven_local_repo(settings_xml),
-    maven_offline = env_truthy 'JDTLS_MAVEN_OFFLINE' or env_truthy 'MAVEN_OFFLINE',
-    has_ge_maven_extension = has_gradle_enterprise_maven_extension(root_dir),
+    global_settings_xml = detect_global_settings(),
+    java_major = major,
+    java_home = detect_java_home(major),
+    local_repo = local_repo,
+    lombok_jar = detect_lombok(local_repo),
+    maven_offline = truthy 'JDTLS_MAVEN_OFFLINE' or truthy 'MAVEN_OFFLINE',
+    import_args = args,
+  }
+  cache[root] = c
+  return c
+end
+
+local function project_key(root, c)
+  local seed = table.concat({
+    vim.fs.normalize(root),
+    tostring(c.java_major),
+    tostring(c.settings_xml or ''),
+    tostring(c.local_repo or ''),
+    tostring(c.import_args or ''),
+  }, '|')
+  return vim.fs.basename(root) .. '-' .. vim.fn.sha256(seed):sub(1, 10)
+end
+
+local function resolve_cmd(config_dir, workspace_dir, c)
+  local java_bin = vim.env.JDTLS_JAVA_BIN
+  if not java_bin or java_bin == '' then
+    local from_home = c.java_home and (c.java_home .. '/bin/java') or nil
+    java_bin = (from_home and vim.fn.executable(from_home) == 1) and from_home or vim.fn.exepath 'java'
+  end
+  if java_bin == '' then
+    java_bin = 'java'
+  end
+
+  local jdtls_bin = (vim.env.JDTLS_BIN and vim.fn.executable(vim.env.JDTLS_BIN) == 1) and vim.env.JDTLS_BIN or vim.fn.exepath 'jdtls'
+  local xms, xmx = vim.env.JDTLS_XMS or '1g', vim.env.JDTLS_XMX or '4g'
+  local with_lombok = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
+
+  -- [FIX]: Flags to prevent Develocity extension from crashing JDTLS import
+  local develocity_flags = {
+    '-Dgradle.scan.disabled=true',
+    '-Ddevelocity.scan.disabled=true',
   }
 
-  cached.lombok_jar = detect_lombok_jar(cached.local_repo)
-  project_cache[root_dir] = cached
-  return cached
-end
-
-local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
-  local jdtls_xms = vim.env.JDTLS_XMS or '1g'
-  local jdtls_xmx = vim.env.JDTLS_XMX or '2g'
-  local extra_jvm_props = {}
-  if cached.has_ge_maven_extension or env_truthy 'JDTLS_DISABLE_DEVELOCITY_MAVEN_EXTENSION' then
-    vim.list_extend(extra_jvm_props, {
-      '-Ddevelocity.enabled=false',
-      '-Dgradle.enterprise.enabled=false',
-      '-Ddevelocity.scan.disabled=true',
-      '-Dscan=false',
-      '-Dcom.gradle.scan.disabled=true',
-      '-Dgradle.scan.disable=true',
-      '-Dcom.gradle.enterprise.maven.extension.enabled=false',
-      '-Dgradle.enterprise.maven.extension.enabled=false',
-      '-Ddevelocity.maven.extension.enabled=false',
-    })
-  end
-
-  local jdtls_bin = vim.fn.exepath 'jdtls'
   if jdtls_bin ~= '' then
-    local cmd = { jdtls_bin }
-
-    table.insert(cmd, '--jvm-arg=-Xms' .. jdtls_xms)
-    table.insert(cmd, '--jvm-arg=-Xmx' .. jdtls_xmx)
-
-    for _, prop in ipairs(extra_jvm_props) do
-      table.insert(cmd, '--jvm-arg=' .. prop)
+    local cmd = {
+      jdtls_bin,
+      '--java-executable=' .. java_bin,
+      '--jvm-arg=-Xms' .. xms,
+      '--jvm-arg=-Xmx' .. xmx,
+    }
+    -- Inject develocity flags
+    for _, flag in ipairs(develocity_flags) do
+      table.insert(cmd, '--jvm-arg=' .. flag)
     end
-
-    if cached.lombok_jar then
-      table.insert(cmd, '--jvm-arg=-javaagent:' .. cached.lombok_jar)
-      table.insert(cmd, '--jvm-arg=-Xbootclasspath/a:' .. cached.lombok_jar)
-    end
-
+    -- Continue with standard args
     vim.list_extend(cmd, {
       '-configuration',
       config_dir,
@@ -398,39 +225,23 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
       workspace_dir,
     })
 
-    return cmd
-  end
-
-  local jdtls_home = vim.env.JDTLS_HOME
-  if not jdtls_home or jdtls_home == '' or vim.fn.isdirectory(jdtls_home) ~= 1 then
-    return nil
-  end
-
-  local launcher = vim.fn.glob(jdtls_home .. '/plugins/org.eclipse.equinox.launcher_*.jar', true, true)[1]
-  if not launcher or launcher == '' then
-    return nil
-  end
-
-  local os_config = 'config_linux'
-  if vim.fn.has 'macunix' == 1 then
-    os_config = 'config_mac'
-  elseif vim.fn.has 'win32' == 1 then
-    os_config = 'config_win'
-  end
-
-  local jdtls_os_config_dir = jdtls_home .. '/' .. os_config
-  if vim.fn.isdirectory(jdtls_os_config_dir) ~= 1 then
-    return nil
-  end
-
-  local java_bin = vim.fn.exepath 'java'
-  if java_bin == '' then
-    local candidate = cached.java_home and (cached.java_home .. '/bin/java') or nil
-    if candidate and vim.fn.executable(candidate) == 1 then
-      java_bin = candidate
-    else
-      java_bin = 'java'
+    if with_lombok and c.lombok_jar then
+      -- Insert agent early in args (index 4 is safe, after java executable arg)
+      table.insert(cmd, 4, '--jvm-arg=-javaagent:' .. c.lombok_jar)
     end
+    return cmd, 'jdtls-bin'
+  end
+
+  local home = vim.env.JDTLS_HOME
+  if not home or home == '' or vim.fn.isdirectory(home) ~= 1 then
+    return nil, nil
+  end
+  local launcher = vim.fn.glob(home .. '/plugins/org.eclipse.equinox.launcher_*.jar', true, true)[1]
+    or vim.fn.glob(home .. '/plugins/org.eclipse.equinox.launcher.jar', true, true)[1]
+  local os_cfg = vim.fn.has 'macunix' == 1 and 'config_mac' or (vim.fn.has 'win32' == 1 and 'config_win' or 'config_linux')
+  local os_cfg_dir = home .. '/' .. os_cfg
+  if not launcher or launcher == '' or vim.fn.isdirectory(os_cfg_dir) ~= 1 then
+    return nil, nil
   end
 
   local cmd = {
@@ -440,18 +251,10 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
     '-Declipse.product=org.eclipse.jdt.ls.core.product',
     '-Dlog.protocol=true',
     '-Dlog.level=WARN',
-    '-Xms' .. jdtls_xms,
-    '-Xmx' .. jdtls_xmx,
-  }
-
-  vim.list_extend(cmd, extra_jvm_props)
-
-  if cached.lombok_jar then
-    table.insert(cmd, '-javaagent:' .. cached.lombok_jar)
-    table.insert(cmd, '-Xbootclasspath/a:' .. cached.lombok_jar)
-  end
-
-  vim.list_extend(cmd, {
+    '-Xms' .. xms,
+    '-Xmx' .. xmx,
+    develocity_flags[1], -- [FIX]
+    develocity_flags[2], -- [FIX]
     '--add-modules=ALL-SYSTEM',
     '--add-opens',
     'java.base/java.util=ALL-UNNAMED',
@@ -460,79 +263,137 @@ local function resolve_jdtls_cmd(config_dir, workspace_dir, cached)
     '-jar',
     launcher,
     '-configuration',
-    jdtls_os_config_dir,
+    os_cfg_dir,
     '-data',
     workspace_dir,
-  })
-
-  return cmd
-end
-
-local function build_java_settings(base_settings, cached)
-  local settings = vim.deepcopy(base_settings or {})
-  settings.java = settings.java or {}
-
-  settings.java.server = settings.java.server or {}
-  settings.java.server.launchMode = settings.java.server.launchMode or 'Standard'
-
-  settings.java.configuration = settings.java.configuration or {}
-  settings.java.configuration.updateBuildConfiguration = settings.java.configuration.updateBuildConfiguration or 'automatic'
-  settings.java.configuration.maven = settings.java.configuration.maven or {}
-  settings.java.configuration.maven.defaultMojoExecutionAction = settings.java.configuration.maven.defaultMojoExecutionAction or 'ignore'
-  settings.java.configuration.maven.notCoveredPluginExecutionSeverity = settings.java.configuration.maven.notCoveredPluginExecutionSeverity
-    or 'warning'
-
-  if cached.settings_xml then
-    settings.java.configuration.maven.userSettings = cached.settings_xml
-  end
-  if cached.global_settings_xml then
-    settings.java.configuration.maven.globalSettings = cached.global_settings_xml
-  end
-  if cached.lifecycle_mappings_xml then
-    settings.java.configuration.maven.lifecycleMappings = cached.lifecycle_mappings_xml
-  end
-
-  settings.java.configuration.runtimes = settings.java.configuration.runtimes or {}
-  if cached.java_home and #settings.java.configuration.runtimes == 0 then
-    settings.java.configuration.runtimes = {
-      {
-        name = 'JavaSE-' .. tostring(cached.java_version_major),
-        path = cached.java_home,
-        default = true,
-      },
-    }
-  end
-
-  settings.java.import = settings.java.import or {}
-  settings.java.import.maven = settings.java.import.maven or {}
-  settings.java.import.maven.enabled = true
-  settings.java.import.maven.disableTestClasspathFlag = false
-  settings.java.import.maven.offline = {
-    enabled = cached.maven_offline,
   }
 
-  settings.java.maven = settings.java.maven or {}
-  settings.java.maven.downloadSources = false
-  settings.java.maven.updateSnapshots = false
+  if with_lombok and c.lombok_jar then
+    -- Insert before flags/modules (index 9 puts it after Xmx and before new flags)
+    table.insert(cmd, 9, '-javaagent:' .. c.lombok_jar)
+  end
+  return cmd, 'jdtls-home'
+end
 
-  settings.java.import.gradle = settings.java.import.gradle or {}
-  settings.java.import.gradle.enabled = false
-  settings.java.import.gradle.wrapper = settings.java.import.gradle.wrapper or {}
-  settings.java.import.gradle.wrapper.enabled = false
-  settings.java.import.gradle.offline = settings.java.import.gradle.offline or {}
-  settings.java.import.gradle.offline.enabled = true
+local function build_settings(base, c)
+  local s = vim.deepcopy(base or {})
+  s.java = s.java or {}
+  s.java.configuration = s.java.configuration or {}
+  s.java.configuration.updateBuildConfiguration = 'automatic'
+  s.java.configuration.maven = s.java.configuration.maven or {}
+  if c.settings_xml then
+    s.java.configuration.maven.userSettings = c.settings_xml
+  end
+  if c.global_settings_xml then
+    s.java.configuration.maven.globalSettings = c.global_settings_xml
+  end
+  s.java.configuration.runtimes = s.java.configuration.runtimes or {}
+  if c.java_home and #s.java.configuration.runtimes == 0 then
+    s.java.configuration.runtimes = { {
+      name = 'JavaSE-' .. tostring(c.java_major),
+      path = c.java_home,
+      default = true,
+    } }
+  end
 
-  settings.java.eclipse = settings.java.eclipse or {}
-  settings.java.eclipse.downloadSources = false
+  s.java.import = s.java.import or {}
+  s.java.import.maven = s.java.import.maven or {}
+  s.java.import.maven.enabled = true
+  s.java.import.maven.disableTestClasspathFlag = false
+  if c.settings_xml then
+    s.java.import.maven.userSettings = c.settings_xml
+  end
+  if c.global_settings_xml then
+    s.java.import.maven.globalSettings = c.global_settings_xml
+  end
+  if c.import_args and c.import_args ~= '' then
+    s.java.import.maven.arguments = c.import_args
+  end
+  s.java.import.maven.offline = { enabled = c.maven_offline }
+  s.java.import.gradle = { enabled = false }
+  s.java.errors = { incompleteClasspath = { severity = 'error' } }
+  return s
+end
 
-  settings.java.autobuild = settings.java.autobuild or {}
-  settings.java.autobuild.enabled = true
+local function capabilities()
+  local caps = vim.lsp.protocol.make_client_capabilities()
+  local ok, blink = pcall(require, 'blink.cmp')
+  if ok and blink.get_lsp_capabilities then
+    caps = blink.get_lsp_capabilities(caps)
+  end
+  return caps
+end
 
-  settings.java.errors = settings.java.errors or {}
-  settings.java.errors.incompleteClasspath = settings.java.errors.incompleteClasspath or {}
-  settings.java.errors.incompleteClasspath.severity = settings.java.errors.incompleteClasspath.severity or 'error'
+local function refresh(root, bufnr)
+  bufnr = bufnr or 0
+  for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
+    if client and client.config and client.config.root_dir == root then
+      client.request('workspace/executeCommand', { command = 'java.project.import', arguments = {} }, function() end, bufnr)
+      client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
+      client.request('java/projectConfigurationUpdate', { uri = vim.uri_from_bufnr(bufnr) }, function() end, bufnr)
+    end
+  end
+end
 
-  return settings
+local function maven_sync(root, c, force)
+  if sync_running[root] then
+    vim.notify('[java3] Maven sync already running.', vim.log.levels.INFO)
+    return
+  end
+
+  local cmd, mvnw = {}, root .. '/mvnw'
+  if vim.fn.executable(mvnw) == 1 then
+    table.insert(cmd, mvnw)
+  elseif vim.fn.executable 'mvn' == 1 then
+    table.insert(cmd, 'mvn')
+  else
+    vim.notify('[java3] Maven executable not found (`mvnw` or `mvn`).', vim.log.levels.ERROR)
+    return
+  end
+
+  if c.settings_xml then
+    vim.list_extend(cmd, { '-s', c.settings_xml })
+  end
+  if c.global_settings_xml then
+    vim.list_extend(cmd, { '-gs', c.global_settings_xml })
+  end
+  if c.local_repo then
+    table.insert(cmd, '-Dmaven.repo.local=' .. c.local_repo)
+  end
+  if c.maven_offline then
+    table.insert(cmd, '-o')
+  end
+  if force then
+    table.insert(cmd, '-U')
+  end
+
+  vim.list_extend(cmd, split_words(vim.env.JDTLS_MAVEN_SYNC_FLAGS or '-DskipTests -DskipITs -Dmaven.test.skip=true'))
+  local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources')
+  vim.list_extend(cmd, vim.tbl_isempty(goals) and { 'generate-sources' } or goals)
+
+  if not vim.system then
+    vim.notify('[java3] vim.system is required for :JdtMavenSync.', vim.log.levels.ERROR)
+    return
+  end
+
+  sync_running[root] = true
+  vim.notify('[java3] Running: ' .. table.concat(cmd, ' '), vim.log.levels.INFO)
+  vim.system(cmd, { cwd = root, text = true }, function(result)
+    vim.schedule(function()
+      sync_running[root] = nil
+      if result.code == 0 then
+        vim.notify('[java3] Maven sync finished. Refreshing JDTLS...', vim.log.levels.INFO)
+        refresh(root, 0)
+        return
+      end
+      local text = (result.stderr and result.stderr ~= '') and result.stderr or (result.stdout or '')
+      local lines, start = vim.split(text, '\n', { trimempty = true }), 1
+      if #lines > 10 then
+        start = #lines - 9
+      end
+      vim.notify('[java3] Maven sync failed.\n' .. table.concat(vim.list_slice(lines, start, #lines), '\n'), vim.log.levels.ERROR)
+    end)
+  end)
 end
 
 return {
@@ -552,125 +413,99 @@ return {
       'neovim/nvim-lspconfig',
       'saghen/blink.cmp',
     },
-    opts = function()
-      return {
-        root_dir = function(path)
-          return detect_root_dir(path)
-        end,
-        project_name = function(root_dir)
-          return root_dir and vim.fs.basename(root_dir) or nil
-        end,
-        project_key = derive_project_key,
-        jdtls_config_dir = function(project_key)
-          return vim.fn.stdpath 'cache' .. '/jdtls/' .. project_key .. '/config'
-        end,
-        jdtls_workspace_dir = function(project_key)
-          return vim.fn.stdpath 'cache' .. '/jdtls/' .. project_key .. '/workspace'
-        end,
-        full_cmd = function(cfg, project_key, cached)
-          local config_dir = cfg.jdtls_config_dir(project_key)
-          local workspace_dir = cfg.jdtls_workspace_dir(project_key)
-          vim.fn.mkdir(config_dir, 'p')
-          vim.fn.mkdir(workspace_dir, 'p')
-          local cmd = resolve_jdtls_cmd(config_dir, workspace_dir, cached)
-          return cmd, config_dir, workspace_dir
-        end,
-        settings = {
-          java = {
-            inlayHints = {
-              parameterNames = {
-                enabled = 'all',
-              },
-            },
-          },
-        },
-      }
-    end,
+    opts = { settings = {} },
     config = function(_, opts)
-      local function attach_jdtls()
+      local function attach()
         if vim.bo.filetype ~= 'java' then
           return
         end
-
-        local bufname = vim.api.nvim_buf_get_name(0)
-        if bufname == '' then
+        local bufnr = vim.api.nvim_get_current_buf()
+        local file = vim.api.nvim_buf_get_name(bufnr)
+        if file == '' then
           return
         end
 
-        local root_dir = opts.root_dir(bufname)
-        if not root_dir or root_dir == '' then
+        local root = detect_root(file)
+        if not root then
           return
         end
 
-        local project_name = opts.project_name(root_dir)
-        local project_key = opts.project_key(root_dir)
-        local cached = get_project_cache(root_dir)
-        local cmd, config_dir, workspace_dir = opts.full_cmd(opts, project_key, cached)
+        local c = build_cache(root)
+        local key = project_key(root, c)
+        local config_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/config'
+        local workspace_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/workspace'
+        vim.fn.mkdir(config_dir, 'p')
+        vim.fn.mkdir(workspace_dir, 'p')
 
+        local cmd, cmd_source = resolve_cmd(config_dir, workspace_dir, c)
         if not cmd then
-          vim.notify('[java] jdtls not found. Install jdtls in PATH or set JDTLS_HOME.', vim.log.levels.WARN)
+          vim.notify('[java3] jdtls not found. Set JDTLS_BIN/JDTLS_HOME or install `jdtls` in PATH.', vim.log.levels.WARN)
           return
         end
 
-        local capabilities = nil
-        local ok_blink, blink = pcall(require, 'blink.cmp')
-        if ok_blink and blink.get_lsp_capabilities then
-          capabilities = blink.get_lsp_capabilities()
-        end
-
-        local config = {
+        local cfg = {
           cmd = cmd,
-          root_dir = root_dir,
-          settings = build_java_settings(opts.settings, cached),
-          capabilities = capabilities,
-          init_options = {
-            bundles = opts.bundles or {},
-          },
+          root_dir = root,
+          settings = build_settings(opts.settings, c),
+          capabilities = capabilities(),
         }
-
-        config = extend_or_override(config, opts.jdtls)
+        if type(opts.jdtls) == 'table' then
+          cfg = vim.tbl_deep_extend('force', cfg, opts.jdtls)
+        end
 
         vim.g.ba_jdtls_last = {
-          root_dir = root_dir,
-          project_name = project_name,
-          project_key = project_key,
-          config_dir = config_dir,
+          root_dir = root,
+          settings_xml = c.settings_xml,
+          local_repo = c.local_repo,
+          maven_import_arguments = c.import_args,
+          java_major = c.java_major,
+          java_home = c.java_home,
+          lombok_jar = c.lombok_jar,
+          cmd_source = cmd_source,
           workspace_dir = workspace_dir,
-          cmd = cmd,
-          settings_xml = cached.settings_xml,
-          global_settings_xml = cached.global_settings_xml,
-          lifecycle_mappings_xml = cached.lifecycle_mappings_xml,
-          java_home = cached.java_home,
-          java_version_major = cached.java_version_major,
-          lombok_jar = cached.lombok_jar,
-          maven_offline = cached.maven_offline,
-          has_ge_maven_extension = cached.has_ge_maven_extension,
         }
 
-        require('jdtls').start_or_attach(config)
+        require('jdtls').start_or_attach(cfg)
       end
 
-      local augroup = vim.api.nvim_create_augroup('ba-java-jdtls', { clear = true })
+      local group = vim.api.nvim_create_augroup('ba-java3-jdtls', { clear = true })
+      vim.api.nvim_create_autocmd('FileType', { group = group, pattern = java_filetypes, callback = attach })
 
       if vim.fn.exists ':JdtlsStatus' == 0 then
         vim.api.nvim_create_user_command('JdtlsStatus', function()
-          local state = vim.g.ba_jdtls_last
-          if not state then
-            vim.notify('[java] jdtls has not been initialized for this session yet.', vim.log.levels.INFO)
-            return
-          end
-          vim.notify(vim.inspect(state), vim.log.levels.INFO)
-        end, { desc = 'Show last resolved jdtls configuration' })
+          vim.notify(vim.inspect(vim.g.ba_jdtls_last or {}), vim.log.levels.INFO)
+        end, { desc = 'Show jdtls status' })
       end
 
-      vim.api.nvim_create_autocmd('FileType', {
-        group = augroup,
-        pattern = java_filetypes,
-        callback = attach_jdtls,
-      })
+      if vim.fn.exists ':JdtMavenSync' == 0 then
+        vim.api.nvim_create_user_command('JdtMavenSync', function(command_opts)
+          local file = vim.api.nvim_buf_get_name(0)
+          local root = (file ~= '') and detect_root(file) or nil
+          if not root then
+            vim.notify('[java3] Cannot sync: no Java root detected.', vim.log.levels.WARN)
+            return
+          end
+          maven_sync(root, build_cache(root), command_opts.bang)
+        end, {
+          bang = true,
+          desc = 'Run Maven generate-sources for current root (! adds -U)',
+        })
+      end
 
-      -- Same pattern as LazyVim: handle the first Java buffer immediately.
-      attach_jdtls()
+      if vim.fn.exists ':JdtProjectsRefresh' == 0 then
+        vim.api.nvim_create_user_command('JdtProjectsRefresh', function()
+          local file = vim.api.nvim_buf_get_name(0)
+          local root = (file ~= '') and detect_root(file) or nil
+          if not root then
+            vim.notify('[java3] Cannot refresh: no Java root detected.', vim.log.levels.WARN)
+            return
+          end
+          refresh(root, 0)
+          vim.notify('[java3] Triggered JDTLS refresh.', vim.log.levels.INFO)
+        end, { desc = 'Refresh JDTLS import/build for current root' })
+      end
+
+      attach()
     end,
   },
 }

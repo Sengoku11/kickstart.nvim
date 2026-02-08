@@ -545,6 +545,69 @@ local function normalize_entry_path(path)
   return path:gsub('\\', '/')
 end
 
+local function classify_generated_source_dir(path)
+  local normalized = normalize_entry_path(path or '')
+  if not normalized then
+    return 'main'
+  end
+  if normalized:find('/generated%-test%-sources/', 1, false) then
+    return 'test'
+  end
+  if normalized:find('/target/generated%-sources/', 1, false) then
+    return 'main'
+  end
+  if normalized:find('/test/', 1, false) then
+    return 'test'
+  end
+  return 'main'
+end
+
+local function build_generated_source_entry(path, is_test)
+  local attrs = {
+    ['maven.pomderived'] = 'true',
+    optional = 'true',
+    ['m2e-apt'] = 'true',
+  }
+  if is_test then
+    attrs.test = 'true'
+  else
+    attrs.ignore_optional_problems = 'true'
+  end
+  return {
+    kind = 3,
+    path = path,
+    output = is_test and 'target/test-classes' or nil,
+    attributes = attrs,
+  }
+end
+
+local function try_add_to_source_path(client, source_dirs, bufnr, done)
+  local idx = 1
+  local results = {}
+
+  local function step()
+    if idx > #source_dirs then
+      done(results)
+      return
+    end
+
+    local dir = source_dirs[idx]
+    idx = idx + 1
+    client.request('workspace/executeCommand', {
+      command = 'java.project.addToSourcePath',
+      arguments = { vim.uri_from_fname(dir) },
+    }, function(err, result)
+      results[dir] = {
+        error = err and (err.message or vim.inspect(err)) or nil,
+        result = result,
+      }
+      step()
+    end, bufnr)
+  end
+
+  step()
+end
+
 local function ensure_generated_sources_via_classpath(root, bufnr)
   root = root and vim.fs.normalize(root) or root
   bufnr = bufnr or 0
@@ -614,11 +677,19 @@ local function ensure_generated_sources_via_classpath(root, bufnr)
     end
 
     local existing = {}
+    local is_main_project = false
     for _, entry in ipairs(classpath_entries) do
       if type(entry) == 'table' and tonumber(entry.kind) == 3 then
         local normalized = normalize_entry_path(entry.path)
         if normalized then
           existing[normalized] = true
+          local attrs = type(entry.attributes) == 'table' and entry.attributes or {}
+          local has_test_attr = attrs.test == 'true' or attrs.test == true
+          if normalized:find('/src/main/java', 1, true) or normalized == 'src/main/java' then
+            if not has_test_attr then
+              is_main_project = true
+            end
+          end
           if module_root and module_root ~= '' then
             if normalized:find('^/') == 1 then
               local rel = vim.fs.relpath(normalized, module_root)
@@ -635,24 +706,47 @@ local function ensure_generated_sources_via_classpath(root, bufnr)
     end
 
     local added = {}
+    local append_candidate = function(candidate, is_test)
+      if not candidate or candidate == '' then
+        return false
+      end
+      local norm = normalize_entry_path(candidate)
+      if not norm or existing[norm] then
+        return false
+      end
+      table.insert(classpath_entries, build_generated_source_entry(candidate, is_test))
+      existing[norm] = true
+      table.insert(added, candidate)
+      return true
+    end
+
     for _, source_dir in ipairs(source_dirs) do
       local rel = vim.fs.relpath(source_dir, module_root)
       rel = normalize_entry_path(rel)
       local abs = normalize_entry_path(source_dir)
-      local candidate = nil
-      if abs and not existing[abs] then
-        candidate = abs
-      elseif rel and rel ~= '' and not rel:find('^%.%./') and not existing[rel] then
-        candidate = rel
+      local generated_kind = classify_generated_source_dir(source_dir)
+      local as_test = generated_kind == 'test'
+      if is_main_project and generated_kind == 'main' then
+        as_test = false
       end
-      if candidate then
-        table.insert(classpath_entries, {
-          kind = 3,
-          path = candidate,
-          attributes = { ['maven.pomderived'] = 'true', optional = 'true' },
-        })
-        existing[candidate] = true
-        table.insert(added, candidate)
+
+      local added_entry = false
+      if rel and rel ~= '' and not rel:find('^%.%./') then
+        added_entry = append_candidate(rel, as_test)
+      elseif abs and truthy 'JDTLS_ALLOW_ABS_GENERATED_SOURCE_ENTRY' then
+        added_entry = append_candidate(abs, as_test)
+      end
+
+      local main_marker = module_root and (module_root .. '/target/generated-sources/src/main/java') or nil
+      if main_marker and abs == normalize_entry_path(main_marker) then
+        if not is_main_project then
+          local fallback_rel = normalize_entry_path(vim.fs.relpath(main_marker, module_root))
+          if fallback_rel and fallback_rel ~= '' and not fallback_rel:find('^%.%./') then
+            append_candidate(fallback_rel, false)
+          elseif truthy 'JDTLS_ALLOW_ABS_GENERATED_SOURCE_ENTRY' then
+            append_candidate(abs, false)
+          end
+        end
       end
     end
 
@@ -673,22 +767,60 @@ local function ensure_generated_sources_via_classpath(root, bufnr)
       arguments = {
         uri,
         {
+          entries = classpath_entries,
           classpathEntries = classpath_entries,
         },
       },
     }, function(update_err)
       generated_patch_running[root] = nil
+      local update_error = update_err and (update_err.message or vim.inspect(update_err)) or nil
+      if not update_err then
+        generated_patch_state[root] = {
+          module_root = module_root,
+          source_dirs = source_dirs,
+          added = added,
+          updated = true,
+          error = nil,
+        }
+        client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
+        refresh_projects(root, bufnr)
+        return
+      end
+
+      if update_error and tostring(update_error):find('entries" is null', 1, true) then
+        try_add_to_source_path(client, source_dirs, bufnr, function(fallback_results)
+          local any_success = false
+          for _, item in pairs(fallback_results) do
+            if item and not item.error then
+              any_success = true
+              break
+            end
+          end
+
+          generated_patch_state[root] = {
+            module_root = module_root,
+            source_dirs = source_dirs,
+            added = added,
+            updated = any_success,
+            error = update_error,
+            fallback_add_to_source_path = fallback_results,
+          }
+
+          if any_success then
+            client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
+            refresh_projects(root, bufnr)
+          end
+        end)
+        return
+      end
+
       generated_patch_state[root] = {
         module_root = module_root,
         source_dirs = source_dirs,
         added = added,
-        updated = update_err == nil,
-        error = update_err and (update_err.message or vim.inspect(update_err)) or nil,
+        updated = false,
+        error = update_error,
       }
-      if not update_err then
-        client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
-        refresh_projects(root, bufnr)
-      end
     end, bufnr)
   end, bufnr)
 end
@@ -747,7 +879,7 @@ local function maven_sync(root, c, force)
   if c.has_ge_maven_extension and not truthy 'JDTLS_ALLOW_DEVELOCITY_MAVEN_EXTENSION' then
     append_develocity_disable_flags(cmd)
   end
-  local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources')
+  local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources compile')
   vim.list_extend(cmd, vim.tbl_isempty(goals) and { 'generate-sources' } or goals)
 
   if not vim.system then
@@ -1081,7 +1213,7 @@ return {
           maven_sync(root, build_cache(root), command_opts.bang)
         end, {
           bang = true,
-          desc = 'Run Maven generate-sources for current root (! adds -U)',
+          desc = 'Run Maven generate-sources + compile for current root (! adds -U)',
         })
       end
 

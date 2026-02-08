@@ -1,12 +1,3 @@
--- FIX: Inject Disable Flags via Environment Variable
--- This sets the variable globally for the editor session.
--- Any Java process (including JDTLS) started hereafter will inherit these flags,
--- preventing the Develocity extension from crashing the build import.
-local existing_opts = vim.env.JAVA_TOOL_OPTIONS or ''
-if not string.find(existing_opts, 'gradle.scan.disabled') then
-  vim.env.JAVA_TOOL_OPTIONS = existing_opts .. ' -Dgradle.scan.disabled=true -Ddevelocity.scan.disabled=true -Dskip.gradle.scan=true'
-end
-
 ---@type string[]
 local java_filetypes = { 'java' }
 
@@ -18,6 +9,10 @@ local java_filetypes = { 'java' }
 ---@field local_repo string|nil
 ---@field lombok_jar string|nil
 ---@field maven_offline boolean
+---@field module_root string
+---@field maven_multi_module_dir string|nil
+---@field extensions_xml string|nil
+---@field bypass_maven_extensions boolean
 ---@field import_args string
 
 ---@type table<string, JavaCacheEntry>
@@ -65,6 +60,38 @@ local function detect_root(file)
     return module_root or project_root or vim.fs.root(file, { '.git' })
   end
   return project_root or module_root or vim.fs.root(file, { '.git' })
+end
+
+---@param file string
+---@return string|nil
+local function detect_module_root(file)
+  return vim.fs.root(file, { 'pom.xml' })
+end
+
+---@param start string
+---@param rel string
+---@return string|nil
+local function find_upward_file(start, rel)
+  local dir = start
+  while dir and dir ~= '' do
+    local candidate = dir .. '/' .. rel
+    if vim.fn.filereadable(candidate) == 1 then
+      return candidate
+    end
+    local parent = vim.fs.dirname(dir)
+    if not parent or parent == dir then
+      break
+    end
+    dir = parent
+  end
+  return nil
+end
+
+---@param s string
+---@param pattern string
+---@return boolean
+local function contains_pattern(s, pattern)
+  return s ~= '' and s:match(pattern) ~= nil
 end
 
 ---@param root string
@@ -183,11 +210,27 @@ local function detect_lombok(local_repo)
 end
 
 ---@param root string
+---@param file string|nil
 ---@return JavaCacheEntry
-local function build_cache(root)
-  if cache[root] then
-    return cache[root]
+local function build_cache(root, file)
+  local module_root = (file and detect_module_root(file)) or root
+  if not module_root or module_root == '' then
+    module_root = root
   end
+  local cache_key = root .. '|' .. module_root
+  if cache[cache_key] then
+    return cache[cache_key]
+  end
+
+  local extensions_xml = find_upward_file(module_root, '.mvn/extensions.xml')
+  local bypass_mode = (vim.env.JDTLS_BYPASS_MVN_EXTENSIONS or 'auto'):lower()
+  local bypass_maven_extensions = extensions_xml ~= nil
+  if bypass_mode == '0' or bypass_mode == 'false' or bypass_mode == 'off' or bypass_mode == 'no' then
+    bypass_maven_extensions = false
+  elseif bypass_mode == '1' or bypass_mode == 'true' or bypass_mode == 'on' or bypass_mode == 'yes' then
+    bypass_maven_extensions = true
+  end
+  local maven_multi_module_dir = bypass_maven_extensions and module_root or nil
 
   local settings_xml = detect_settings_xml(root)
   local settings = settings_xml and read_file(settings_xml) or ''
@@ -217,6 +260,9 @@ local function build_cache(root)
     end
     args = table.concat(parts, ' ')
   end
+  if maven_multi_module_dir and not contains_pattern(args or '', 'maven%.multiModuleProjectDirectory=') then
+    args = (args ~= '' and (args .. ' ') or '') .. '-Dmaven.multiModuleProjectDirectory=' .. maven_multi_module_dir
+  end
 
   local c = {
     settings_xml = settings_xml,
@@ -226,9 +272,13 @@ local function build_cache(root)
     local_repo = local_repo,
     lombok_jar = detect_lombok(local_repo),
     maven_offline = truthy 'JDTLS_MAVEN_OFFLINE' or truthy 'MAVEN_OFFLINE',
+    module_root = module_root,
+    maven_multi_module_dir = maven_multi_module_dir,
+    extensions_xml = extensions_xml,
+    bypass_maven_extensions = bypass_maven_extensions,
     import_args = args,
   }
-  cache[root] = c
+  cache[cache_key] = c
   return c
 end
 
@@ -238,9 +288,11 @@ end
 local function project_key(root, c)
   local seed = table.concat({
     vim.fs.normalize(root),
+    vim.fs.normalize(c.module_root),
     tostring(c.java_major),
     tostring(c.settings_xml or ''),
     tostring(c.local_repo or ''),
+    tostring(c.maven_multi_module_dir or ''),
     tostring(c.import_args or ''),
   }, '|')
   return vim.fs.basename(root) .. '-' .. vim.fn.sha256(seed):sub(1, 10)
@@ -440,7 +492,9 @@ local function maven_sync(root, c, force)
     return
   end
 
-  local cmd, mvnw = {}, root .. '/mvnw'
+  local run_root = c.module_root or root
+  local cmd, mvnw = {}, run_root .. '/mvnw'
+  local pom_path = run_root .. '/pom.xml'
   if vim.fn.executable(mvnw) == 1 then
     table.insert(cmd, mvnw)
   elseif vim.fn.executable 'mvn' == 1 then
@@ -465,8 +519,15 @@ local function maven_sync(root, c, force)
   if force then
     table.insert(cmd, '-U')
   end
+  local sync_flags = vim.env.JDTLS_MAVEN_SYNC_FLAGS or '-DskipTests -DskipITs -Dmaven.test.skip=true'
+  if c.maven_multi_module_dir and not contains_pattern(sync_flags, 'maven%.multiModuleProjectDirectory=') then
+    table.insert(cmd, '-Dmaven.multiModuleProjectDirectory=' .. c.maven_multi_module_dir)
+  end
+  if run_root ~= root and vim.fn.filereadable(pom_path) == 1 then
+    vim.list_extend(cmd, { '-f', pom_path })
+  end
 
-  vim.list_extend(cmd, split_words(vim.env.JDTLS_MAVEN_SYNC_FLAGS or '-DskipTests -DskipITs -Dmaven.test.skip=true'))
+  vim.list_extend(cmd, split_words(sync_flags))
   local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources')
   vim.list_extend(cmd, vim.tbl_isempty(goals) and { 'generate-sources' } or goals)
 
@@ -478,7 +539,7 @@ local function maven_sync(root, c, force)
   sync_running[root] = true
   vim.notify('[java3] Running: ' .. table.concat(cmd, ' '), vim.log.levels.INFO)
   ---@param result { code: integer, stdout: string|nil, stderr: string|nil }
-  vim.system(cmd, { cwd = root, text = true }, function(result)
+  vim.system(cmd, { cwd = run_root, text = true }, function(result)
     vim.schedule(function()
       sync_running[root] = nil
       if result.code == 0 then
@@ -544,7 +605,7 @@ return {
           return
         end
 
-        local c = build_cache(root)
+        local c = build_cache(root, file)
         local key = project_key(root, c)
         local config_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/config'
         local workspace_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/workspace'
@@ -572,9 +633,13 @@ return {
 
         vim.g.ba_jdtls_last = {
           root_dir = root,
+          module_root = c.module_root,
           settings_xml = c.settings_xml,
           local_repo = c.local_repo,
           maven_import_arguments = c.import_args,
+          maven_multi_module_dir = c.maven_multi_module_dir,
+          extensions_xml = c.extensions_xml,
+          bypass_maven_extensions = c.bypass_maven_extensions,
           java_major = c.java_major,
           java_home = c.java_home,
           lombok_jar = c.lombok_jar,
@@ -603,7 +668,7 @@ return {
             vim.notify('[java3] Cannot sync: no Java root detected.', vim.log.levels.WARN)
             return
           end
-          maven_sync(root, build_cache(root), command_opts.bang)
+          maven_sync(root, build_cache(root, file), command_opts.bang)
         end, {
           bang = true,
           desc = 'Run Maven generate-sources for current root (! adds -U)',

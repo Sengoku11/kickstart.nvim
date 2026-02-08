@@ -1,6 +1,10 @@
 local java_filetypes = { 'java' }
 local cache = {}
 local sync_running = {}
+local generated_patch_state = {}
+local generated_patch_running = {}
+local initial_refresh_done = {}
+local JDT_SETTING_CLASSPATH_ENTRIES = 'org.eclipse.jdt.ls.core.classpathEntries'
 
 local function truthy(name)
   local v = vim.env[name]
@@ -96,6 +100,92 @@ local function detect_global_settings()
   return vim.fn.filereadable(p) == 1 and p or nil
 end
 
+local function detect_lifecycle_mappings(root)
+  local explicit = vim.env.JDTLS_M2E_LIFECYCLE_MAPPINGS
+  if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
+    return explicit
+  end
+  local dir = root
+  while dir and dir ~= '' do
+    local p1 = dir .. '/.mvn/lifecycle-mapping-metadata.xml'
+    local p2 = dir .. '/m2e-lifecycle-mapping.xml'
+    if vim.fn.filereadable(p1) == 1 then
+      return p1
+    end
+    if vim.fn.filereadable(p2) == 1 then
+      return p2
+    end
+    local parent = vim.fs.dirname(dir)
+    if not parent or parent == dir then
+      break
+    end
+    dir = parent
+  end
+  if truthy 'JDTLS_USE_GLOBAL_M2E_LIFECYCLE_MAPPINGS' then
+    local fallback = vim.fn.stdpath 'config' .. '/m2e-lifecycle-mapping.xml'
+    return vim.fn.filereadable(fallback) == 1 and fallback or nil
+  end
+  return nil
+end
+
+local function has_develocity_maven_extension(root)
+  local dir = root
+  while dir and dir ~= '' do
+    local ext_file = dir .. '/.mvn/extensions.xml'
+    if vim.fn.filereadable(ext_file) == 1 then
+      local content = read_file(ext_file):lower()
+      if content:find('gradle%-enterprise%-maven%-extension', 1, false)
+        or content:find('develocity%-maven%-extension', 1, false)
+        or content:find('com%.gradle', 1, false)
+      then
+        return true
+      end
+    end
+    local parent = vim.fs.dirname(dir)
+    if not parent or parent == dir then
+      break
+    end
+    dir = parent
+  end
+  return false
+end
+
+local function append_develocity_disable_flags(parts)
+  vim.list_extend(parts, {
+    '-Ddevelocity.enabled=false',
+    '-Dgradle.enterprise.enabled=false',
+    '-Ddevelocity.scan.disabled=true',
+    '-Dscan=false',
+    '-Dcom.gradle.scan.disabled=true',
+    '-Dgradle.scan.disable=true',
+    '-Dcom.gradle.enterprise.maven.extension.enabled=false',
+    '-Dgradle.enterprise.maven.extension.enabled=false',
+    '-Ddevelocity.maven.extension.enabled=false',
+  })
+end
+
+local function build_maven_import_args(local_repo, has_ge_maven_extension)
+  local explicit = vim.env.JDTLS_MAVEN_IMPORT_ARGUMENTS
+  if explicit and explicit ~= '' then
+    return explicit
+  end
+
+  local parts = {}
+  if local_repo then
+    table.insert(parts, '-Dmaven.repo.local=' .. local_repo)
+  end
+  if vim.env.JDTLS_MAVEN_PROFILES and vim.env.JDTLS_MAVEN_PROFILES ~= '' then
+    table.insert(parts, '-P' .. vim.env.JDTLS_MAVEN_PROFILES:gsub('%s+', ''))
+  end
+  if vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS and vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS ~= '' then
+    vim.list_extend(parts, split_words(vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS))
+  end
+  if has_ge_maven_extension and not truthy 'JDTLS_ALLOW_DEVELOCITY_MAVEN_EXTENSION' then
+    append_develocity_disable_flags(parts)
+  end
+  return table.concat(parts, ' ')
+end
+
 local function detect_local_repo(settings_content)
   if vim.env.MAVEN_REPO_LOCAL and vim.fn.isdirectory(vim.env.MAVEN_REPO_LOCAL) == 1 then
     return vim.fs.normalize(vim.env.MAVEN_REPO_LOCAL)
@@ -146,28 +236,18 @@ local function build_cache(root)
 
   local major = java_major(vim.env.JDTLS_JAVA_VERSION or first_tag(settings, version_patterns) or first_tag(pom, version_patterns) or '17')
   local local_repo = detect_local_repo(settings)
-  local args = vim.env.JDTLS_MAVEN_IMPORT_ARGUMENTS
-  if not args or args == '' then
-    local parts = {}
-    if local_repo then
-      table.insert(parts, '-Dmaven.repo.local=' .. local_repo)
-    end
-    if vim.env.JDTLS_MAVEN_PROFILES and vim.env.JDTLS_MAVEN_PROFILES ~= '' then
-      table.insert(parts, '-P' .. vim.env.JDTLS_MAVEN_PROFILES:gsub('%s+', ''))
-    end
-    if vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS and vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS ~= '' then
-      vim.list_extend(parts, split_words(vim.env.JDTLS_MAVEN_IMPORT_APPEND_ARGUMENTS))
-    end
-    args = table.concat(parts, ' ')
-  end
+  local has_ge_maven_extension = has_develocity_maven_extension(root)
+  local args = build_maven_import_args(local_repo, has_ge_maven_extension)
 
   local c = {
     settings_xml = settings_xml,
     global_settings_xml = detect_global_settings(),
+    lifecycle_mappings_xml = detect_lifecycle_mappings(root),
     java_major = major,
     java_home = detect_java_home(major),
     local_repo = local_repo,
     lombok_jar = detect_lombok(local_repo),
+    has_ge_maven_extension = has_ge_maven_extension,
     maven_offline = truthy 'JDTLS_MAVEN_OFFLINE' or truthy 'MAVEN_OFFLINE',
     import_args = args,
   }
@@ -181,6 +261,7 @@ local function project_key(root, c)
     tostring(c.java_major),
     tostring(c.settings_xml or ''),
     tostring(c.local_repo or ''),
+    tostring(c.lifecycle_mappings_xml or ''),
     tostring(c.import_args or ''),
   }, '|')
   return vim.fs.basename(root) .. '-' .. vim.fn.sha256(seed):sub(1, 10)
@@ -199,6 +280,10 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   local jdtls_bin = (vim.env.JDTLS_BIN and vim.fn.executable(vim.env.JDTLS_BIN) == 1) and vim.env.JDTLS_BIN or vim.fn.exepath 'jdtls'
   local xms, xmx = vim.env.JDTLS_XMS or '1g', vim.env.JDTLS_XMX or '4g'
   local with_lombok = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
+  local jvm_props = {}
+  if c.has_ge_maven_extension and not truthy 'JDTLS_ALLOW_DEVELOCITY_MAVEN_EXTENSION' then
+    append_develocity_disable_flags(jvm_props)
+  end
 
   if jdtls_bin ~= '' then
     local cmd = {
@@ -206,11 +291,16 @@ local function resolve_cmd(config_dir, workspace_dir, c)
       '--java-executable=' .. java_bin,
       '--jvm-arg=-Xms' .. xms,
       '--jvm-arg=-Xmx' .. xmx,
+    }
+    for _, prop in ipairs(jvm_props) do
+      table.insert(cmd, '--jvm-arg=' .. prop)
+    end
+    vim.list_extend(cmd, {
       '-configuration',
       config_dir,
       '-data',
       workspace_dir,
-    }
+    })
     if with_lombok and c.lombok_jar then
       table.insert(cmd, 4, '--jvm-arg=-javaagent:' .. c.lombok_jar)
     end
@@ -238,6 +328,9 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     '-Dlog.level=WARN',
     '-Xms' .. xms,
     '-Xmx' .. xmx,
+  }
+  vim.list_extend(cmd, jvm_props)
+  vim.list_extend(cmd, {
     '--add-modules=ALL-SYSTEM',
     '--add-opens',
     'java.base/java.util=ALL-UNNAMED',
@@ -249,7 +342,7 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     os_cfg_dir,
     '-data',
     workspace_dir,
-  }
+  })
   if with_lombok and c.lombok_jar then
     table.insert(cmd, 9, '-javaagent:' .. c.lombok_jar)
   end
@@ -267,6 +360,9 @@ local function build_settings(base, c)
   end
   if c.global_settings_xml then
     s.java.configuration.maven.globalSettings = c.global_settings_xml
+  end
+  if c.lifecycle_mappings_xml then
+    s.java.configuration.maven.lifecycleMappings = c.lifecycle_mappings_xml
   end
   s.java.configuration.runtimes = s.java.configuration.runtimes or {}
   if c.java_home and #s.java.configuration.runtimes == 0 then
@@ -287,6 +383,9 @@ local function build_settings(base, c)
   if c.global_settings_xml then
     s.java.import.maven.globalSettings = c.global_settings_xml
   end
+  if c.lifecycle_mappings_xml then
+    s.java.import.maven.lifecycleMappings = c.lifecycle_mappings_xml
+  end
   if c.import_args and c.import_args ~= '' then
     s.java.import.maven.arguments = c.import_args
   end
@@ -305,15 +404,219 @@ local function capabilities()
   return caps
 end
 
+local function generated_patch_delay_ms()
+  local ms = tonumber(vim.env.JDTLS_GENERATED_SOURCES_DELAY_MS or '')
+  if ms and ms >= 0 then
+    return math.floor(ms)
+  end
+  return 700
+end
+
+local function project_uri(root, bufnr)
+  bufnr = bufnr or 0
+  if vim.api.nvim_buf_is_valid(bufnr) then
+    local file = vim.api.nvim_buf_get_name(bufnr)
+    if file ~= '' then
+      return vim.uri_from_fname(file)
+    end
+  end
+  local pom = root .. '/pom.xml'
+  if vim.fn.filereadable(pom) == 1 then
+    return vim.uri_from_fname(pom)
+  end
+  return vim.uri_from_fname(root)
+end
+
+local function list_generated_source_dirs_for_buffer(root, bufnr)
+  bufnr = bufnr or 0
+  local file = vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_get_name(bufnr) or ''
+  local module_root = (file ~= '' and vim.fs.root(file, { 'pom.xml' })) or root
+  if not module_root or module_root == '' then
+    return {}, nil
+  end
+
+  module_root = vim.fs.normalize(module_root)
+  local patterns = {
+    module_root .. '/target/generated-sources/**/src/main/java',
+    module_root .. '/target/generated-sources/**/src/generated/java',
+    module_root .. '/target/generated-sources/**/src/*/java',
+    module_root .. '/target/generated-sources/**/java',
+    module_root .. '/target/generated-sources/**/annotations',
+  }
+  local seen = {}
+  local dirs = {}
+  for _, pattern in ipairs(patterns) do
+    local matches = vim.fn.glob(pattern, true, true)
+    if type(matches) == 'table' then
+      for _, path in ipairs(matches) do
+        if vim.fn.isdirectory(path) == 1 then
+          local normalized = vim.fs.normalize(path)
+          if not seen[normalized] then
+            seen[normalized] = true
+            table.insert(dirs, normalized)
+          end
+        end
+      end
+    end
+  end
+  table.sort(dirs)
+  return dirs, module_root
+end
+
+local function normalize_entry_path(path)
+  if not path or path == '' then
+    return nil
+  end
+  return path:gsub('\\', '/')
+end
+
+local function ensure_generated_sources_via_classpath(root, bufnr)
+  bufnr = bufnr or 0
+  if generated_patch_running[root] then
+    return
+  end
+
+  local source_dirs, module_root = list_generated_source_dirs_for_buffer(root, bufnr)
+  if vim.tbl_isempty(source_dirs) then
+    generated_patch_state[root] = {
+      module_root = module_root,
+      source_dirs = {},
+      added = {},
+      updated = false,
+      message = 'No generated source directories detected.',
+    }
+    return
+  end
+
+  local client = nil
+  for _, item in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
+    if item and item.config and item.config.root_dir == root then
+      client = item
+      break
+    end
+  end
+  if not client then
+    generated_patch_state[root] = {
+      module_root = module_root,
+      source_dirs = source_dirs,
+      added = {},
+      updated = false,
+      message = 'No jdtls client attached for root.',
+    }
+    return
+  end
+
+  generated_patch_running[root] = true
+  local uri = project_uri(root, bufnr)
+  client.request('workspace/executeCommand', {
+    command = 'java.project.getSettings',
+    arguments = { uri, { JDT_SETTING_CLASSPATH_ENTRIES } },
+  }, function(err, settings)
+    if err then
+      generated_patch_running[root] = nil
+      generated_patch_state[root] = {
+        module_root = module_root,
+        source_dirs = source_dirs,
+        added = {},
+        updated = false,
+        error = err.message or vim.inspect(err),
+      }
+      return
+    end
+
+    local classpath_entries = {}
+    if type(settings) == 'table' then
+      local raw_entries = settings[JDT_SETTING_CLASSPATH_ENTRIES] or settings.classpathEntries
+      if type(raw_entries) == 'table' then
+        classpath_entries = vim.deepcopy(raw_entries)
+      end
+    end
+    if vim.tbl_isempty(classpath_entries) then
+      generated_patch_running[root] = nil
+      generated_patch_state[root] = {
+        module_root = module_root,
+        source_dirs = source_dirs,
+        added = {},
+        updated = false,
+        error = 'java.project.getSettings did not return classpath entries.',
+      }
+      return
+    end
+
+    local existing = {}
+    for _, entry in ipairs(classpath_entries) do
+      if type(entry) == 'table' and tonumber(entry.kind) == 3 then
+        local normalized = normalize_entry_path(entry.path)
+        if normalized then
+          existing[normalized] = true
+        end
+      end
+    end
+
+    local added = {}
+    for _, source_dir in ipairs(source_dirs) do
+      local rel = vim.fs.relpath(source_dir, module_root)
+      rel = normalize_entry_path(rel)
+      if rel and rel ~= '' and not rel:find('^%.%./') and not existing[rel] then
+        table.insert(classpath_entries, {
+          kind = 3,
+          path = rel,
+          attributes = {},
+        })
+        existing[rel] = true
+        table.insert(added, rel)
+      end
+    end
+
+    if vim.tbl_isempty(added) then
+      generated_patch_running[root] = nil
+      generated_patch_state[root] = {
+        module_root = module_root,
+        source_dirs = source_dirs,
+        added = {},
+        updated = false,
+        message = 'Generated source classpath already up to date.',
+      }
+      return
+    end
+
+    client.request('workspace/executeCommand', {
+      command = 'java.project.updateClassPaths',
+      arguments = {
+        uri,
+        {
+          classpathEntries = classpath_entries,
+        },
+      },
+    }, function(update_err)
+      generated_patch_running[root] = nil
+      generated_patch_state[root] = {
+        module_root = module_root,
+        source_dirs = source_dirs,
+        added = added,
+        updated = update_err == nil,
+        error = update_err and (update_err.message or vim.inspect(update_err)) or nil,
+      }
+      if not update_err then
+        client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
+      end
+    end, bufnr)
+  end, bufnr)
+end
+
 local function refresh(root, bufnr)
   bufnr = bufnr or 0
+  local uri = project_uri(root, bufnr)
   for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
     if client and client.config and client.config.root_dir == root then
       client.request('workspace/executeCommand', { command = 'java.project.import', arguments = {} }, function() end, bufnr)
       client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
-      client.request('java/projectConfigurationUpdate', { uri = vim.uri_from_bufnr(bufnr) }, function() end, bufnr)
+      client.request('java/projectConfigurationUpdate', { uri = uri }, function() end, bufnr)
     end
   end
+  vim.defer_fn(function()
+    ensure_generated_sources_via_classpath(root, bufnr)
+  end, generated_patch_delay_ms())
 end
 
 local function maven_sync(root, c, force)
@@ -349,6 +652,9 @@ local function maven_sync(root, c, force)
   end
 
   vim.list_extend(cmd, split_words(vim.env.JDTLS_MAVEN_SYNC_FLAGS or '-DskipTests -DskipITs -Dmaven.test.skip=true'))
+  if c.has_ge_maven_extension and not truthy 'JDTLS_ALLOW_DEVELOCITY_MAVEN_EXTENSION' then
+    append_develocity_disable_flags(cmd)
+  end
   local goals = split_words(vim.env.JDTLS_MAVEN_SYNC_GOALS or 'generate-sources')
   vim.list_extend(cmd, vim.tbl_isempty(goals) and { 'generate-sources' } or goals)
 
@@ -364,15 +670,15 @@ local function maven_sync(root, c, force)
       sync_running[root] = nil
       if result.code == 0 then
         vim.notify('[java3] Maven sync finished. Refreshing JDTLS...', vim.log.levels.INFO)
-        refresh(root, 0)
-        return
+      else
+        local text = (result.stderr and result.stderr ~= '') and result.stderr or (result.stdout or '')
+        local lines, start = vim.split(text, '\n', { trimempty = true }), 1
+        if #lines > 10 then
+          start = #lines - 9
+        end
+        vim.notify('[java3] Maven sync failed.\n' .. table.concat(vim.list_slice(lines, start, #lines), '\n'), vim.log.levels.ERROR)
       end
-      local text = (result.stderr and result.stderr ~= '') and result.stderr or (result.stdout or '')
-      local lines, start = vim.split(text, '\n', { trimempty = true }), 1
-      if #lines > 10 then
-        start = #lines - 9
-      end
-      vim.notify('[java3] Maven sync failed.\n' .. table.concat(vim.list_slice(lines, start, #lines), '\n'), vim.log.levels.ERROR)
+      refresh(root, 0)
     end)
   end)
 end
@@ -437,16 +743,27 @@ return {
         vim.g.ba_jdtls_last = {
           root_dir = root,
           settings_xml = c.settings_xml,
+          global_settings_xml = c.global_settings_xml,
+          lifecycle_mappings_xml = c.lifecycle_mappings_xml,
           local_repo = c.local_repo,
           maven_import_arguments = c.import_args,
+          has_ge_maven_extension = c.has_ge_maven_extension,
           java_major = c.java_major,
           java_home = c.java_home,
           lombok_jar = c.lombok_jar,
+          lombok_agent_enabled = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT',
           cmd_source = cmd_source,
           workspace_dir = workspace_dir,
+          generated_source_patch = generated_patch_state[root],
         }
 
         require('jdtls').start_or_attach(cfg)
+        if not initial_refresh_done[root] then
+          initial_refresh_done[root] = true
+          vim.defer_fn(function()
+            refresh(root, bufnr)
+          end, generated_patch_delay_ms() + 150)
+        end
       end
 
       local group = vim.api.nvim_create_augroup('ba-java3-jdtls', { clear = true })
@@ -454,7 +771,11 @@ return {
 
       if vim.fn.exists ':JdtlsStatus' == 0 then
         vim.api.nvim_create_user_command('JdtlsStatus', function()
-          vim.notify(vim.inspect(vim.g.ba_jdtls_last or {}), vim.log.levels.INFO)
+          local state = vim.deepcopy(vim.g.ba_jdtls_last or {})
+          if state.root_dir and generated_patch_state[state.root_dir] then
+            state.generated_source_patch = generated_patch_state[state.root_dir]
+          end
+          vim.notify(vim.inspect(state), vim.log.levels.INFO)
         end, { desc = 'Show jdtls status' })
       end
 
@@ -484,6 +805,28 @@ return {
           refresh(root, 0)
           vim.notify('[java3] Triggered JDTLS refresh.', vim.log.levels.INFO)
         end, { desc = 'Refresh JDTLS import/build for current root' })
+      end
+
+      if vim.fn.exists ':JdtGeneratedSources' == 0 then
+        vim.api.nvim_create_user_command('JdtGeneratedSources', function()
+          local file = vim.api.nvim_buf_get_name(0)
+          local root = (file ~= '') and detect_root(file) or nil
+          if not root then
+            vim.notify('[java3] Cannot update generated sources: no Java root detected.', vim.log.levels.WARN)
+            return
+          end
+          ensure_generated_sources_via_classpath(root, 0)
+          vim.defer_fn(function()
+            local patch = generated_patch_state[root] or {}
+            if patch.error then
+              vim.notify('[java3] Generated source classpath update failed: ' .. tostring(patch.error), vim.log.levels.ERROR)
+            elseif patch.updated and patch.added and #patch.added > 0 then
+              vim.notify('[java3] Added generated source entries: ' .. table.concat(patch.added, ', '), vim.log.levels.INFO)
+            else
+              vim.notify('[java3] Generated source classpath already up to date.', vim.log.levels.INFO)
+            end
+          end, 300)
+        end, { desc = 'Patch JDTLS classpath with detected target/generated-sources paths' })
       end
 
       attach()

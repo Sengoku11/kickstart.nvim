@@ -15,6 +15,7 @@ local java_filetypes = { 'java' }
 ---@field develocity_user_config string|nil
 ---@field bypass_maven_extensions boolean
 ---@field maven_override_args { arg: string, pattern: string }[]
+---@field maven_multi_module_dir string|nil
 ---@field import_args string
 
 ---@type table<string, JavaCacheEntry>
@@ -295,12 +296,15 @@ local function build_cache(root, file)
 
   local develocity_user_config = nil
   local maven_override_args = {}
+  local maven_multi_module_dir = nil
 
   local function add_override(arg, pattern)
     table.insert(maven_override_args, { arg = arg, pattern = pattern })
   end
 
   if bypass_maven_extensions and extensions_kind then
+    maven_multi_module_dir = module_root
+    add_override('-Dmaven.multiModuleProjectDirectory=' .. maven_multi_module_dir, 'maven%.multiModuleProjectDirectory=')
     develocity_user_config = ensure_disabled_extension_config(extensions_kind)
     if develocity_user_config then
       add_override('-Dgradle.user.config=' .. develocity_user_config, 'gradle%.user%.config=')
@@ -359,6 +363,7 @@ local function build_cache(root, file)
     develocity_user_config = develocity_user_config,
     bypass_maven_extensions = bypass_maven_extensions,
     maven_override_args = maven_override_args,
+    maven_multi_module_dir = maven_multi_module_dir,
     import_args = args,
   }
   cache[cache_key] = c
@@ -709,6 +714,9 @@ return {
         ensure_env_with_overrides('MAVEN_OPTS', c.maven_override_args)
         ensure_env_with_overrides('JAVA_TOOL_OPTIONS', c.maven_override_args)
         ensure_env_with_overrides('JDK_JAVA_OPTIONS', c.maven_override_args)
+        if c.bypass_maven_extensions and c.module_root and c.module_root ~= '' then
+          vim.env.MAVEN_PROJECTBASEDIR = c.module_root
+        end
         local key = project_key(root, c)
         local config_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/config'
         local workspace_dir = vim.fn.stdpath 'cache' .. '/jdtls/' .. key .. '/workspace'
@@ -745,6 +753,8 @@ return {
           develocity_user_config = c.develocity_user_config,
           bypass_maven_extensions = c.bypass_maven_extensions,
           maven_override_args = c.maven_override_args,
+          maven_multi_module_dir = c.maven_multi_module_dir,
+          maven_projectbasedir = vim.env.MAVEN_PROJECTBASEDIR,
           maven_opts = vim.env.MAVEN_OPTS,
           java_tool_options = vim.env.JAVA_TOOL_OPTIONS,
           jdk_java_options = vim.env.JDK_JAVA_OPTIONS,

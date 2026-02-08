@@ -1,21 +1,53 @@
+---@type string[]
 local java_filetypes = { 'java' }
+
+---@class JavaCacheEntry
+---@field settings_xml string|nil
+---@field global_settings_xml string|nil
+---@field java_major integer
+---@field java_home string|nil
+---@field local_repo string|nil
+---@field lombok_jar string|nil
+---@field maven_offline boolean
+---@field import_args string
+
+---@type table<string, JavaCacheEntry>
 local cache = {}
+---@type table<string, boolean>
 local sync_running = {}
 
+---@param name string
+---@return boolean
 local function truthy(name)
   local v = vim.env[name]
   return v and ({ ['1'] = true, ['true'] = true, ['yes'] = true, ['on'] = true })[v:lower()] or false
 end
 
+---@param path string
+---@return string
 local function read_file(path)
   local ok, lines = pcall(vim.fn.readfile, path)
   return ok and type(lines) == 'table' and table.concat(lines, '\n') or ''
 end
 
+---@param s string|nil
+---@return string[]
 local function split_words(s)
   return (s and s ~= '') and vim.split(s, '%s+', { trimempty = true }) or {}
 end
 
+---@param expr string
+---@return string
+local function expand_path(expr)
+  local expanded = vim.fn.expand(expr)
+  if type(expanded) == 'table' then
+    return expanded[1] or ''
+  end
+  return expanded
+end
+
+---@param file string
+---@return string|nil
 local function detect_root(file)
   local mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower()
   local project_root = vim.fs.root(file, { '.mvn', 'mvnw' })
@@ -26,6 +58,8 @@ local function detect_root(file)
   return project_root or module_root or vim.fs.root(file, { '.git' })
 end
 
+---@param root string
+---@return string|nil
 local function detect_settings_xml(root)
   local explicit = vim.env.JDTLS_SETTINGS_XML
   if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
@@ -46,10 +80,13 @@ local function detect_settings_xml(root)
     end
     dir = parent
   end
-  local fallback = vim.fn.expand '~/.m2/settings.xml'
+  local fallback = expand_path '~/.m2/settings.xml'
   return vim.fn.filereadable(fallback) == 1 and fallback or nil
 end
 
+---@param content string
+---@param patterns string[]
+---@return string|nil
 local function first_tag(content, patterns)
   for _, p in ipairs(patterns) do
     local v = content:match(p)
@@ -60,6 +97,8 @@ local function first_tag(content, patterns)
   return nil
 end
 
+---@param version string|nil
+---@return integer
 local function java_major(version)
   local n = tonumber((version or ''):match '^(%d+)')
   if not n then
@@ -71,6 +110,8 @@ local function java_major(version)
   return n
 end
 
+---@param major integer
+---@return string|nil
 local function detect_java_home(major)
   if vim.env.JDTLS_JAVA_HOME and vim.fn.isdirectory(vim.env.JDTLS_JAVA_HOME) == 1 then
     return vim.env.JDTLS_JAVA_HOME
@@ -87,6 +128,7 @@ local function detect_java_home(major)
   return nil
 end
 
+---@return string|nil
 local function detect_global_settings()
   local m2_home = vim.env.M2_HOME or vim.env.MAVEN_HOME
   if not m2_home or m2_home == '' then
@@ -96,21 +138,25 @@ local function detect_global_settings()
   return vim.fn.filereadable(p) == 1 and p or nil
 end
 
+---@param settings_content string
+---@return string|nil
 local function detect_local_repo(settings_content)
   if vim.env.MAVEN_REPO_LOCAL and vim.fn.isdirectory(vim.env.MAVEN_REPO_LOCAL) == 1 then
     return vim.fs.normalize(vim.env.MAVEN_REPO_LOCAL)
   end
   local repo = settings_content:match '<localRepository>%s*(.-)%s*</localRepository>'
   if repo and repo ~= '' then
-    repo = vim.fn.expand(repo:gsub('${user.home}', vim.fn.expand '~'))
+    repo = expand_path(repo:gsub('${user.home}', expand_path '~'))
     if vim.fn.isdirectory(repo) == 1 then
       return vim.fs.normalize(repo)
     end
   end
-  local fallback = vim.fs.normalize(vim.fn.expand '~/.m2/repository')
+  local fallback = vim.fs.normalize(expand_path '~/.m2/repository')
   return vim.fn.isdirectory(fallback) == 1 and fallback or nil
 end
 
+---@param local_repo string|nil
+---@return string|nil
 local function detect_lombok(local_repo)
   local explicit = vim.env.JDTLS_LOMBOK_JAR
   if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
@@ -127,6 +173,8 @@ local function detect_lombok(local_repo)
   return jars[#jars]
 end
 
+---@param root string
+---@return JavaCacheEntry
 local function build_cache(root)
   if cache[root] then
     return cache[root]
@@ -175,6 +223,9 @@ local function build_cache(root)
   return c
 end
 
+---@param root string
+---@param c JavaCacheEntry
+---@return string
 local function project_key(root, c)
   local seed = table.concat({
     vim.fs.normalize(root),
@@ -186,6 +237,10 @@ local function project_key(root, c)
   return vim.fs.basename(root) .. '-' .. vim.fn.sha256(seed):sub(1, 10)
 end
 
+---@param config_dir string
+---@param workspace_dir string
+---@param c JavaCacheEntry
+---@return string[]|nil, string|nil
 local function resolve_cmd(config_dir, workspace_dir, c)
   local java_bin = vim.env.JDTLS_JAVA_BIN
   if not java_bin or java_bin == '' then
@@ -200,7 +255,7 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   local xms, xmx = vim.env.JDTLS_XMS or '1g', vim.env.JDTLS_XMX or '4g'
   local with_lombok = not truthy 'JDTLS_DISABLE_LOMBOK_AGENT'
 
-  -- [FIX]: Flags to prevent Develocity extension from crashing JDTLS import
+  -- Disable Develocity/scan integrations for stable imports.
   local develocity_flags = {
     '-Dgradle.scan.disabled=true',
     '-Ddevelocity.scan.disabled=true',
@@ -213,11 +268,9 @@ local function resolve_cmd(config_dir, workspace_dir, c)
       '--jvm-arg=-Xms' .. xms,
       '--jvm-arg=-Xmx' .. xmx,
     }
-    -- Inject develocity flags
     for _, flag in ipairs(develocity_flags) do
       table.insert(cmd, '--jvm-arg=' .. flag)
     end
-    -- Continue with standard args
     vim.list_extend(cmd, {
       '-configuration',
       config_dir,
@@ -226,7 +279,7 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     })
 
     if with_lombok and c.lombok_jar then
-      -- Insert agent early in args (index 4 is safe, after java executable arg)
+      -- Keep the agent close to the JVM arguments for predictable startup order.
       table.insert(cmd, 4, '--jvm-arg=-javaagent:' .. c.lombok_jar)
     end
     return cmd, 'jdtls-bin'
@@ -253,8 +306,8 @@ local function resolve_cmd(config_dir, workspace_dir, c)
     '-Dlog.level=WARN',
     '-Xms' .. xms,
     '-Xmx' .. xmx,
-    develocity_flags[1], -- [FIX]
-    develocity_flags[2], -- [FIX]
+    develocity_flags[1],
+    develocity_flags[2],
     '--add-modules=ALL-SYSTEM',
     '--add-opens',
     'java.base/java.util=ALL-UNNAMED',
@@ -269,12 +322,15 @@ local function resolve_cmd(config_dir, workspace_dir, c)
   }
 
   if with_lombok and c.lombok_jar then
-    -- Insert before flags/modules (index 9 puts it after Xmx and before new flags)
+    -- Keep the java agent before module/open flags.
     table.insert(cmd, 9, '-javaagent:' .. c.lombok_jar)
   end
   return cmd, 'jdtls-home'
 end
 
+---@param base table|nil
+---@param c JavaCacheEntry
+---@return table
 local function build_settings(base, c)
   local s = vim.deepcopy(base or {})
   s.java = s.java or {}
@@ -309,12 +365,15 @@ local function build_settings(base, c)
   if c.import_args and c.import_args ~= '' then
     s.java.import.maven.arguments = c.import_args
   end
+  s.java.format = s.java.format or {}
+  s.java.format.enabled = false
   s.java.import.maven.offline = { enabled = c.maven_offline }
   s.java.import.gradle = { enabled = false }
   s.java.errors = { incompleteClasspath = { severity = 'error' } }
   return s
 end
 
+---@return table
 local function capabilities()
   local caps = vim.lsp.protocol.make_client_capabilities()
   local ok, blink = pcall(require, 'blink.cmp')
@@ -324,17 +383,48 @@ local function capabilities()
   return caps
 end
 
+---@param client table
+---@param method string
+---@param bufnr integer
+---@return boolean
+local function client_supports_method(client, method, bufnr)
+  if client:supports_method(method, bufnr) then
+    return true
+  end
+  -- Neovim 0.10 may expect an options table here; test integer and table call signatures.
+  local ok, supported = pcall(client.supports_method, client, method, { bufnr = bufnr })
+  return ok and supported or false
+end
+
+---@param client table
+local function disable_jdtls_formatting(client)
+  if not client.server_capabilities then
+    return
+  end
+  client.server_capabilities.documentFormattingProvider = false
+  client.server_capabilities.documentRangeFormattingProvider = false
+end
+
+---@param root string
+---@param bufnr integer|nil
 local function refresh(root, bufnr)
   bufnr = bufnr or 0
   for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
     if client and client.config and client.config.root_dir == root then
-      client.request('workspace/executeCommand', { command = 'java.project.import', arguments = {} }, function() end, bufnr)
-      client.request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, function() end, bufnr)
-      client.request('java/projectConfigurationUpdate', { uri = vim.uri_from_bufnr(bufnr) }, function() end, bufnr)
+      if client_supports_method(client, 'workspace/executeCommand', bufnr) then
+        client:request('workspace/executeCommand', { command = 'java.project.import', arguments = {} }, nil, bufnr)
+        client:request('workspace/executeCommand', { command = 'java.project.refreshDiagnostics', arguments = {} }, nil, bufnr)
+      end
+      if client_supports_method(client, 'java/projectConfigurationUpdate', bufnr) then
+        client:request('java/projectConfigurationUpdate', { uri = vim.uri_from_bufnr(bufnr) }, nil, bufnr)
+      end
     end
   end
 end
 
+---@param root string
+---@param c JavaCacheEntry
+---@param force boolean
 local function maven_sync(root, c, force)
   if sync_running[root] then
     vim.notify('[java3] Maven sync already running.', vim.log.levels.INFO)
@@ -378,6 +468,7 @@ local function maven_sync(root, c, force)
 
   sync_running[root] = true
   vim.notify('[java3] Running: ' .. table.concat(cmd, ' '), vim.log.levels.INFO)
+  ---@param result { code: integer, stdout: string|nil, stderr: string|nil }
   vim.system(cmd, { cwd = root, text = true }, function(result)
     vim.schedule(function()
       sync_running[root] = nil
@@ -400,6 +491,7 @@ return {
   {
     'nvim-treesitter/nvim-treesitter',
     opts = function(_, opts)
+      opts = opts or {}
       opts.ensure_installed = opts.ensure_installed or {}
       if not vim.tbl_contains(opts.ensure_installed, 'java') then
         table.insert(opts.ensure_installed, 'java')
@@ -415,6 +507,19 @@ return {
     },
     opts = { settings = {} },
     config = function(_, opts)
+      opts = opts or {}
+      opts.settings = type(opts.settings) == 'table' and opts.settings or {}
+
+      ---@param client table
+      ---@param bufnr integer
+      local function on_attach(client, bufnr)
+        -- Conform uses LSP fallback on save, so disable JDTLS formatting per Java buffer.
+        disable_jdtls_formatting(client)
+        if type(opts.jdtls) == 'table' and type(opts.jdtls.on_attach) == 'function' then
+          opts.jdtls.on_attach(client, bufnr)
+        end
+      end
+
       local function attach()
         if vim.bo.filetype ~= 'java' then
           return
@@ -448,9 +553,12 @@ return {
           root_dir = root,
           settings = build_settings(opts.settings, c),
           capabilities = capabilities(),
+          on_attach = on_attach,
         }
         if type(opts.jdtls) == 'table' then
-          cfg = vim.tbl_deep_extend('force', cfg, opts.jdtls)
+          local user_jdtls = vim.deepcopy(opts.jdtls)
+          user_jdtls.on_attach = nil
+          cfg = vim.tbl_deep_extend('force', cfg, user_jdtls)
         end
 
         vim.g.ba_jdtls_last = {
@@ -478,6 +586,7 @@ return {
       end
 
       if vim.fn.exists ':JdtMavenSync' == 0 then
+        ---@param command_opts { bang: boolean }
         vim.api.nvim_create_user_command('JdtMavenSync', function(command_opts)
           local file = vim.api.nvim_buf_get_name(0)
           local root = (file ~= '') and detect_root(file) or nil

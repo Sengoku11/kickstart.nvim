@@ -24,10 +24,13 @@ local function detect_root(file)
   local mode = (vim.env.JDTLS_ROOT_MODE or 'auto'):lower()
   local project_root = vim.fs.root(file, { '.mvn', 'mvnw' })
   local module_root = vim.fs.root(file, { 'pom.xml' })
+  local selected
   if mode == 'module' then
-    return module_root or project_root or vim.fs.root(file, { '.git' })
+    selected = module_root or project_root or vim.fs.root(file, { '.git' })
+  else
+    selected = project_root or module_root or vim.fs.root(file, { '.git' })
   end
-  return project_root or module_root or vim.fs.root(file, { '.git' })
+  return selected and vim.fs.normalize(selected) or nil
 end
 
 local function detect_settings_xml(root)
@@ -435,6 +438,7 @@ local function same_root(a, b)
 end
 
 local function jdtls_clients_for_root(root)
+  root = root and vim.fs.normalize(root) or root
   local out = {}
   for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
     local croot = client and client.config and client.config.root_dir or nil
@@ -446,6 +450,7 @@ local function jdtls_clients_for_root(root)
 end
 
 local function first_jdtls_client_for_root(root, bufnr)
+  root = root and vim.fs.normalize(root) or root
   local by_root = jdtls_clients_for_root(root)
   if not vim.tbl_isempty(by_root) then
     return by_root[1]
@@ -458,6 +463,7 @@ local function first_jdtls_client_for_root(root, bufnr)
 end
 
 local function refresh_projects(root, bufnr)
+  root = root and vim.fs.normalize(root) or root
   bufnr = bufnr or 0
   local uri = project_uri(root, bufnr)
   for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
@@ -540,6 +546,7 @@ local function normalize_entry_path(path)
 end
 
 local function ensure_generated_sources_via_classpath(root, bufnr)
+  root = root and vim.fs.normalize(root) or root
   bufnr = bufnr or 0
   if generated_patch_running[root] then
     return
@@ -612,6 +619,17 @@ local function ensure_generated_sources_via_classpath(root, bufnr)
         local normalized = normalize_entry_path(entry.path)
         if normalized then
           existing[normalized] = true
+          if module_root and module_root ~= '' then
+            if normalized:find('^/') == 1 then
+              local rel = vim.fs.relpath(normalized, module_root)
+              rel = normalize_entry_path(rel)
+              if rel and rel ~= '' and not rel:find('^%.%./') then
+                existing[rel] = true
+              end
+            else
+              existing[normalize_entry_path(module_root .. '/' .. normalized)] = true
+            end
+          end
         end
       end
     end
@@ -620,14 +638,21 @@ local function ensure_generated_sources_via_classpath(root, bufnr)
     for _, source_dir in ipairs(source_dirs) do
       local rel = vim.fs.relpath(source_dir, module_root)
       rel = normalize_entry_path(rel)
-      if rel and rel ~= '' and not rel:find('^%.%./') and not existing[rel] then
+      local abs = normalize_entry_path(source_dir)
+      local candidate = nil
+      if abs and not existing[abs] then
+        candidate = abs
+      elseif rel and rel ~= '' and not rel:find('^%.%./') and not existing[rel] then
+        candidate = rel
+      end
+      if candidate then
         table.insert(classpath_entries, {
           kind = 3,
-          path = rel,
-          attributes = {},
+          path = candidate,
+          attributes = { ['maven.pomderived'] = 'true', optional = 'true' },
         })
-        existing[rel] = true
-        table.insert(added, rel)
+        existing[candidate] = true
+        table.insert(added, candidate)
       end
     end
 
@@ -669,6 +694,7 @@ local function ensure_generated_sources_via_classpath(root, bufnr)
 end
 
 local function refresh(root, bufnr)
+  root = root and vim.fs.normalize(root) or root
   bufnr = bufnr or 0
   local uri = project_uri(root, bufnr)
   for _, client in ipairs(vim.lsp.get_clients { name = 'jdtls' }) do
@@ -685,6 +711,7 @@ local function refresh(root, bufnr)
 end
 
 local function maven_sync(root, c, force)
+  root = root and vim.fs.normalize(root) or root
   if sync_running[root] then
     vim.notify('[java3] Maven sync already running.', vim.log.levels.INFO)
     return
@@ -807,6 +834,7 @@ local function readable_classpath_entry(entry)
 end
 
 local function classpath_probe(root, bufnr)
+  root = root and vim.fs.normalize(root) or root
   bufnr = bufnr or 0
   local uri = project_uri(root, bufnr)
   local source_dirs, module_root = list_generated_source_dirs_for_buffer(root, bufnr)
@@ -903,6 +931,27 @@ local function classpath_probe(root, bufnr)
             table.insert(report, vim.inspect(settings))
             table.insert(report, '```')
           end
+
+          local generated_src_main = module_root and (module_root .. '/target/generated-sources/src/main/java') or nil
+          local has_generated_src_main = false
+          if generated_src_main and type(entries) == 'table' then
+            local needle_abs = normalize_entry_path(generated_src_main)
+            local needle_rel = normalize_entry_path(vim.fs.relpath(generated_src_main, module_root))
+            for _, entry in ipairs(entries) do
+              if type(entry) == 'table' and tonumber(entry.kind) == 3 then
+                local p = normalize_entry_path(entry.path or '')
+                if p and (p == needle_abs or p == needle_rel) then
+                  has_generated_src_main = true
+                  break
+                end
+              end
+            end
+          end
+
+          table.insert(report, '')
+          table.insert(report, '## Generated Main Source Check')
+          table.insert(report, '- expected: `' .. tostring(generated_src_main or 'nil') .. '`')
+          table.insert(report, '- present_in_classpath_entries: `' .. tostring(has_generated_src_main) .. '`')
 
           table.insert(report, '')
           table.insert(report, '## Runtime Classpaths')
@@ -1067,7 +1116,7 @@ return {
             else
               vim.notify('[java3] Generated source classpath already up to date.', vim.log.levels.INFO)
             end
-          end, 300)
+          end, 1000)
         end, { desc = 'Patch JDTLS classpath with detected target/generated-sources paths' })
       end
 

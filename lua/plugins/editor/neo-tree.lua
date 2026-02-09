@@ -11,7 +11,8 @@ return {
     'MunifTanjim/nui.nvim',
   },
   keys = {
-    -- { '\\', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
+    { '\\', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
+    -- { '<leader>e', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
     { '<leader>os', ':Neotree git_status<CR>', desc = 'NeoTree Open Git Status', silent = true },
     { '<leader>ob', ':Neotree buffers<CR>', desc = 'NeoTree Open Buffers', silent = true },
   },
@@ -22,6 +23,7 @@ return {
       bind_to_cwd = false,
       follow_current_file = { enabled = true },
       use_libuv_file_watcher = true,
+      group_empty_dirs = true,
       filtered_items = {
         always_show = { -- remains visible even if other settings would normally hide it
           '.gitignore',
@@ -35,7 +37,7 @@ return {
       position = 'left',
       width = 40,
       mappings = {
-        -- ['\\'] = 'close_window',
+        ['\\'] = 'close_window',
         ['l'] = 'open',
         ['h'] = 'close_node',
         ['<space>'] = 'none',
@@ -95,12 +97,12 @@ return {
         expander_highlight = 'NeoTreeExpander',
       },
       icon = {
-        folder_closed = BA.config.icons.kinds.Folder,
-        folder_open = BA.config.icons.kinds.FolderOpen,
-        folder_empty = BA.config.icons.kinds.FolderEmpty,
+        folder_closed = '', -- BA.config.icons.kinds.Folder,
+        folder_open = '', -- BA.config.icons.kinds.FolderOpen,
+        folder_empty = '', -- BA.config.icons.kinds.FolderEmpty,
         -- The next two settings are only a fallback, if you use nvim-web-devicons and configure default icons there
         -- then these will never be used.
-        default = '*',
+        default = '', --'*',
         highlight = 'NeoTreeFileIcon',
       },
       modified = {
@@ -110,7 +112,7 @@ return {
       git_status = {
         symbols = {
           -- Change type
-          added = BA.config.icons.git.added,
+          added = '● ', -- BA.config.icons.git.added,
           modified = '', -- or ""
           deleted = BA.config.icons.git.deleted,
           renamed = BA.config.icons.git.renamed,
@@ -118,7 +120,7 @@ return {
           untracked = BA.config.icons.git.untrackd,
           ignored = BA.config.icons.git.ignored,
           unstaged = BA.config.icons.git.unstaged,
-          staged = BA.config.icons.git.staged,
+          staged = '● ', -- BA.config.icons.git.staged,
           conflict = BA.config.icons.git.conflict,
         },
       },

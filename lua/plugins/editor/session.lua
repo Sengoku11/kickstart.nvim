@@ -8,6 +8,7 @@ local unload_fts = {
   ['blame'] = true,
   ['undotree'] = true,
   ['diff'] = true,
+  ['neo-tree'] = true,
 }
 
 vim.api.nvim_create_autocmd('User', {

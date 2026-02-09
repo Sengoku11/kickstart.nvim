@@ -21,6 +21,8 @@ local sync_running = {}
 local dap_setup_done = {}
 ---@type table<string, boolean>
 local dap_warned = {}
+---@type boolean
+local neotest_warned = false
 
 ---@param name string
 ---@return boolean
@@ -207,6 +209,31 @@ local function extend_with_glob(out, pattern)
       table.insert(out, path)
     end
   end
+end
+
+---@return string|nil
+local function detect_neotest_junit_jar()
+  local explicit = vim.env.NEOTEST_JAVA_JUNIT_JAR
+  if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
+    return vim.fs.normalize(explicit)
+  end
+
+  local data_home = (vim.env.XDG_DATA_HOME and vim.env.XDG_DATA_HOME ~= '') and vim.env.XDG_DATA_HOME or expand_path '~/.local/share'
+  local m2_repo = vim.env.MAVEN_REPO_LOCAL
+  if not m2_repo or m2_repo == '' then
+    m2_repo = expand_path '~/.m2/repository'
+  end
+
+  local matches = {}
+  extend_with_glob(matches, data_home .. '/java-test/junit-platform-console-standalone-*.jar')
+  extend_with_glob(matches, data_home .. '/nvim/neotest-java/junit-platform-console-standalone-*.jar')
+  extend_with_glob(matches, m2_repo .. '/org/junit/platform/junit-platform-console-standalone/*/junit-platform-console-standalone-*.jar')
+  matches = dedupe_files(matches)
+  if vim.tbl_isempty(matches) then
+    return nil
+  end
+  table.sort(matches)
+  return matches[#matches]
 end
 
 local excluded_test_bundles = {
@@ -674,6 +701,20 @@ local function maven_sync(root, c, force)
   end)
 end
 
+local function debug_nearest_java_test()
+  local ok, neotest = pcall(require, 'neotest')
+  if not ok then
+    vim.notify('[java3] neotest is not available.', vim.log.levels.ERROR)
+    return
+  end
+  local ok_run, err = pcall(function()
+    neotest.run.run { strategy = 'dap' }
+  end)
+  if not ok_run then
+    vim.notify('[java3] Failed to debug nearest test: ' .. tostring(err), vim.log.levels.ERROR)
+  end
+end
+
 return {
   {
     'nvim-treesitter/nvim-treesitter',
@@ -683,6 +724,76 @@ return {
       if not vim.tbl_contains(opts.ensure_installed, 'java') then
         table.insert(opts.ensure_installed, 'java')
       end
+    end,
+  },
+  {
+    'nvim-neotest/neotest',
+    dependencies = {
+      'nvim-neotest/nvim-nio',
+      'nvim-lua/plenary.nvim',
+      'antoinemadec/FixCursorHold.nvim',
+      'nvim-treesitter/nvim-treesitter',
+      {
+        'rcasia/neotest-java',
+        ft = java_filetypes,
+        dependencies = {
+          'mfussenegger/nvim-jdtls',
+          'mfussenegger/nvim-dap',
+        },
+      },
+    },
+    opts = function(_, opts)
+      opts = opts or {}
+      opts.adapters = type(opts.adapters) == 'table' and opts.adapters or {}
+
+      local junit_jar = detect_neotest_junit_jar()
+      if junit_jar then
+        local existing = type(opts.adapters['neotest-java']) == 'table' and opts.adapters['neotest-java'] or {}
+        opts.adapters['neotest-java'] = vim.tbl_deep_extend('force', existing, {
+          junit_jar = junit_jar,
+          incremental_build = true,
+        })
+      else
+        opts.adapters['neotest-java'] = nil
+      end
+
+      return opts
+    end,
+    config = function(_, opts)
+      opts = opts or {}
+      local adapter_specs = type(opts.adapters) == 'table' and opts.adapters or {}
+      local adapters = {}
+
+      if vim.tbl_islist(adapter_specs) then
+        adapters = adapter_specs
+      else
+        for name, adapter_opts in pairs(adapter_specs) do
+          local ok_module, module = pcall(require, name)
+          if ok_module then
+            if type(module) == 'function' then
+              local ok_adapter, adapter = pcall(module, adapter_opts or {})
+              if ok_adapter and adapter then
+                table.insert(adapters, adapter)
+              end
+            else
+              table.insert(adapters, module)
+            end
+          end
+        end
+      end
+
+      if not detect_neotest_junit_jar() and not neotest_warned then
+        neotest_warned = true
+        vim.schedule(function()
+          vim.notify(
+            '[java3] neotest-java disabled: junit-platform-console-standalone JAR not found. Set NEOTEST_JAVA_JUNIT_JAR or place the JAR under ~/.m2/repository or ~/.local/share/java-test.',
+            vim.log.levels.WARN
+          )
+        end)
+      end
+
+      opts.adapters = adapters
+      require('neotest').setup(opts)
     end,
   },
   -- {
@@ -717,6 +828,10 @@ return {
       ---@param client table
       ---@param bufnr integer
       local function on_attach(client, bufnr)
+        vim.keymap.set('n', '<leader>gt', debug_nearest_java_test, {
+          buffer = bufnr,
+          desc = 'Java: Debug nearest test (neotest)',
+        })
         local root = (client and client.config and client.config.root_dir) or ''
         setup_dap(root, dap_bundles_by_root[root] or {})
         if type(opts.jdtls) == 'table' and type(opts.jdtls.on_attach) == 'function' then

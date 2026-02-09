@@ -44,6 +44,20 @@ local function split_words(s)
   return (s and s ~= '') and vim.split(s, '%s+', { trimempty = true }) or {}
 end
 
+---@param list string[]
+---@param value string|nil
+local function append_unique(list, value)
+  if not value or value == '' then
+    return
+  end
+  for _, item in ipairs(list) do
+    if item == value then
+      return
+    end
+  end
+  table.insert(list, value)
+end
+
 ---@param expr string
 ---@return string
 local function expand_path(expr)
@@ -214,20 +228,32 @@ end
 ---@return string|nil
 local function detect_neotest_junit_jar()
   local explicit = vim.env.NEOTEST_JAVA_JUNIT_JAR
-  if explicit and explicit ~= '' and vim.fn.filereadable(explicit) == 1 then
-    return vim.fs.normalize(explicit)
+  if explicit and explicit ~= '' then
+    local expanded = vim.fs.normalize(expand_path(explicit))
+    if vim.fn.filereadable(expanded) == 1 then
+      return expanded
+    end
   end
 
   local data_home = (vim.env.XDG_DATA_HOME and vim.env.XDG_DATA_HOME ~= '') and vim.env.XDG_DATA_HOME or expand_path '~/.local/share'
-  local m2_repo = vim.env.MAVEN_REPO_LOCAL
-  if not m2_repo or m2_repo == '' then
-    m2_repo = expand_path '~/.m2/repository'
+  local maven_repos = {}
+  append_unique(maven_repos, vim.fs.normalize(expand_path '~/.m2/repository'))
+  if vim.env.MAVEN_REPO_LOCAL and vim.env.MAVEN_REPO_LOCAL ~= '' then
+    append_unique(maven_repos, vim.fs.normalize(expand_path(vim.env.MAVEN_REPO_LOCAL)))
+  end
+  local import_args = vim.env.JDTLS_MAVEN_IMPORT_ARGUMENTS
+  local import_repo = import_args and import_args:match('%-Dmaven%.repo%.local=([^%s]+)') or nil
+  if import_repo and import_repo ~= '' then
+    append_unique(maven_repos, vim.fs.normalize(expand_path(import_repo)))
   end
 
   local matches = {}
   extend_with_glob(matches, data_home .. '/java-test/junit-platform-console-standalone-*.jar')
+  extend_with_glob(matches, data_home .. '/java-test/**/junit-platform-console-standalone-*.jar')
   extend_with_glob(matches, data_home .. '/nvim/neotest-java/junit-platform-console-standalone-*.jar')
-  extend_with_glob(matches, m2_repo .. '/org/junit/platform/junit-platform-console-standalone/*/junit-platform-console-standalone-*.jar')
+  for _, repo in ipairs(maven_repos) do
+    extend_with_glob(matches, repo .. '/org/junit/platform/junit-platform-console-standalone/*/junit-platform-console-standalone-*.jar')
+  end
   matches = dedupe_files(matches)
   if vim.tbl_isempty(matches) then
     return nil
@@ -924,6 +950,17 @@ return {
           bang = true,
           desc = 'Run Maven generate-sources for current root (! adds -U)',
         })
+      end
+
+      if vim.fn.exists ':JdtNeotestJavaJar' == 0 then
+        vim.api.nvim_create_user_command('JdtNeotestJavaJar', function()
+          local jar = detect_neotest_junit_jar()
+          if jar then
+            vim.notify('[java3] neotest-java junit jar: ' .. jar, vim.log.levels.INFO)
+          else
+            vim.notify('[java3] neotest-java junit jar: not found', vim.log.levels.WARN)
+          end
+        end, { desc = 'Show detected neotest-java JUnit standalone jar' })
       end
 
       if vim.fn.exists ':JdtProjectsRefresh' == 0 then

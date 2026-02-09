@@ -366,7 +366,7 @@ local function build_settings(base, c)
     s.java.import.maven.arguments = c.import_args
   end
   s.java.format = s.java.format or {}
-  s.java.format.enabled = false
+  s.java.format.enabled = true
   s.java.import.maven.offline = { enabled = c.maven_offline }
   s.java.import.gradle = { enabled = false }
   s.java.errors = { incompleteClasspath = { severity = 'error' } }
@@ -394,15 +394,6 @@ local function client_supports_method(client, method, bufnr)
   -- Neovim 0.10 may expect an options table here; test integer and table call signatures.
   local ok, supported = pcall(client.supports_method, client, method, { bufnr = bufnr })
   return ok and supported or false
-end
-
----@param client table
-local function disable_jdtls_formatting(client)
-  if not client.server_capabilities then
-    return
-  end
-  client.server_capabilities.documentFormattingProvider = false
-  client.server_capabilities.documentRangeFormattingProvider = false
 end
 
 ---@param root string
@@ -513,8 +504,6 @@ return {
       ---@param client table
       ---@param bufnr integer
       local function on_attach(client, bufnr)
-        -- Conform uses LSP fallback on save, so disable JDTLS formatting per Java buffer.
-        disable_jdtls_formatting(client)
         if type(opts.jdtls) == 'table' and type(opts.jdtls.on_attach) == 'function' then
           opts.jdtls.on_attach(client, bufnr)
         end

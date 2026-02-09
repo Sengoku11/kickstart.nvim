@@ -11,6 +11,7 @@ local java_filetypes = { 'java' }
 ---@field maven_offline boolean
 ---@field import_args string
 ---@field dap_bundles string[]
+---@field dap_bundle_source string|nil
 
 ---@type table<string, JavaCacheEntry>
 local cache = {}
@@ -208,27 +209,111 @@ local function extend_with_glob(out, pattern)
   end
 end
 
----@return string[]
-local function detect_dap_bundles()
-  local bundles = {}
+local excluded_test_bundles = {
+  ['com.microsoft.java.test.runner-jar-with-dependencies.jar'] = true,
+  ['jacocoagent.jar'] = true,
+}
 
+---@param debug_dir string|nil
+---@return string|nil
+local function pick_debug_bundle(debug_dir)
+  if not debug_dir or debug_dir == '' or vim.fn.isdirectory(debug_dir) ~= 1 then
+    return nil
+  end
+  local matches = {}
+  extend_with_glob(matches, debug_dir .. '/**/com.microsoft.java.debug.plugin-*.jar')
+  matches = dedupe_files(matches)
+  if vim.tbl_isempty(matches) then
+    return nil
+  end
+  table.sort(matches)
+  return matches[#matches]
+end
+
+---@param test_dir string|nil
+---@return string[]
+local function collect_test_bundles(test_dir)
+  if not test_dir or test_dir == '' or vim.fn.isdirectory(test_dir) ~= 1 then
+    return {}
+  end
+  local matches, bundles = {}, {}
+  extend_with_glob(matches, test_dir .. '/**/*.jar')
+  for _, jar in ipairs(dedupe_files(matches)) do
+    if not excluded_test_bundles[vim.fs.basename(jar)] then
+      table.insert(bundles, jar)
+    end
+  end
+  return bundles
+end
+
+---@param debug_dir string|nil
+---@param test_dir string|nil
+---@return string[]|nil
+local function collect_dap_bundles_from_dirs(debug_dir, test_dir)
+  local debug_bundle = pick_debug_bundle(debug_dir)
+  if not debug_bundle then
+    return nil
+  end
+  local bundles = { debug_bundle }
+  vim.list_extend(bundles, collect_test_bundles(test_dir))
+  return dedupe_files(bundles)
+end
+
+---@return { name: string, debug_dir: string, test_dir: string }[]
+local function bundle_sources()
+  local sources = {}
+
+  ---@param name string
+  ---@param debug_dir string|nil
+  ---@param test_dir string|nil
+  local function add(name, debug_dir, test_dir)
+    if not debug_dir or debug_dir == '' or not test_dir or test_dir == '' then
+      return
+    end
+    table.insert(sources, {
+      name = name,
+      debug_dir = vim.fs.normalize(debug_dir),
+      test_dir = vim.fs.normalize(test_dir),
+    })
+  end
+
+  add('env-dirs', vim.env.JDTLS_JAVA_DEBUG_DIR, vim.env.JDTLS_JAVA_TEST_DIR)
+  if vim.env.JDTLS_DAP_BUNDLES_ROOT and vim.env.JDTLS_DAP_BUNDLES_ROOT ~= '' then
+    local root = vim.fs.normalize(vim.env.JDTLS_DAP_BUNDLES_ROOT)
+    add('env-root', root .. '/java-debug', root .. '/java-test')
+  end
+  local data_home = (vim.env.XDG_DATA_HOME and vim.env.XDG_DATA_HOME ~= '') and vim.env.XDG_DATA_HOME or expand_path '~/.local/share'
+  add('xdg-data-home', data_home .. '/java-debug', data_home .. '/java-test')
+  local mason = vim.fn.stdpath 'data' .. '/mason/packages'
+  add('mason', mason .. '/java-debug-adapter', mason .. '/java-test')
+  return sources
+end
+
+---@return string[], string|nil
+local function detect_dap_bundles()
   local explicit = vim.env.JDTLS_DAP_BUNDLES
   if explicit and explicit ~= '' then
+    local bundles = {}
     local separator = vim.fn.has 'win32' == 1 and ';' or ':'
     for _, item in ipairs(vim.split(explicit, separator, { trimempty = true })) do
       if vim.fn.filereadable(item) == 1 then
         table.insert(bundles, item)
+      elseif vim.fn.isdirectory(item) == 1 then
+        extend_with_glob(bundles, item .. '/**/*.jar')
       else
         extend_with_glob(bundles, item)
       end
     end
-    return dedupe_files(bundles)
+    return dedupe_files(bundles), 'JDTLS_DAP_BUNDLES'
   end
 
-  local mason = vim.fn.stdpath 'data' .. '/mason/packages'
-  extend_with_glob(bundles, mason .. '/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar')
-  extend_with_glob(bundles, mason .. '/java-test/extension/server/*.jar')
-  return dedupe_files(bundles)
+  for _, source in ipairs(bundle_sources()) do
+    local bundles = collect_dap_bundles_from_dirs(source.debug_dir, source.test_dir)
+    if bundles and not vim.tbl_isempty(bundles) then
+      return bundles, source.name
+    end
+  end
+  return {}, nil
 end
 
 ---@param cfg table
@@ -255,7 +340,10 @@ local function setup_dap(root, bundles)
   if vim.tbl_isempty(bundles) then
     if not dap_warned[key] then
       dap_warned[key] = true
-      vim.notify('[java3] Java DAP bundles not found. Install `java-debug-adapter` (and optional `java-test`) with Mason.', vim.log.levels.WARN)
+      vim.notify(
+        '[java3] Java DAP bundles not found. Place VS Code jars under ~/.local/share/java-debug and ~/.local/share/java-test, or set JDTLS_DAP_BUNDLES/JDTLS_DAP_BUNDLES_ROOT.',
+        vim.log.levels.WARN
+      )
     end
     return
   end
@@ -299,6 +387,7 @@ local function build_cache(root)
 
   local major = java_major(vim.env.JDTLS_JAVA_VERSION or first_tag(settings, version_patterns) or first_tag(pom, version_patterns) or '17')
   local local_repo = detect_local_repo(settings)
+  local dap_bundles, dap_bundle_source = detect_dap_bundles()
   local args = vim.env.JDTLS_MAVEN_IMPORT_ARGUMENTS
   if not args or args == '' then
     local parts = {}
@@ -323,7 +412,8 @@ local function build_cache(root)
     lombok_jar = detect_lombok(local_repo),
     maven_offline = truthy 'JDTLS_MAVEN_OFFLINE' or truthy 'MAVEN_OFFLINE',
     import_args = args,
-    dap_bundles = detect_dap_bundles(),
+    dap_bundles = dap_bundles,
+    dap_bundle_source = dap_bundle_source,
   }
   cache[root] = c
   return c
@@ -688,6 +778,7 @@ return {
           lombok_jar = c.lombok_jar,
           cmd_source = cmd_source,
           workspace_dir = workspace_dir,
+          dap_bundle_source = c.dap_bundle_source,
           dap_bundle_count = #cfg_bundles,
           dap_bundles = cfg_bundles,
         }

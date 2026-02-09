@@ -10,11 +10,16 @@ local java_filetypes = { 'java' }
 ---@field lombok_jar string|nil
 ---@field maven_offline boolean
 ---@field import_args string
+---@field dap_bundles string[]
 
 ---@type table<string, JavaCacheEntry>
 local cache = {}
 ---@type table<string, boolean>
 local sync_running = {}
+---@type table<string, boolean>
+local dap_setup_done = {}
+---@type table<string, boolean>
+local dap_warned = {}
 
 ---@param name string
 ---@return boolean
@@ -173,6 +178,106 @@ local function detect_lombok(local_repo)
   return jars[#jars]
 end
 
+---@param paths string[]
+---@return string[]
+local function dedupe_files(paths)
+  local out, seen = {}, {}
+  for _, path in ipairs(paths or {}) do
+    if path and path ~= '' then
+      local normalized = vim.fs.normalize(path)
+      if vim.fn.filereadable(normalized) == 1 and not seen[normalized] then
+        seen[normalized] = true
+        table.insert(out, normalized)
+      end
+    end
+  end
+  return out
+end
+
+---@param out string[]
+---@param pattern string
+local function extend_with_glob(out, pattern)
+  local matches = vim.fn.glob(pattern, true, true)
+  if type(matches) ~= 'table' then
+    return
+  end
+  for _, path in ipairs(matches) do
+    if path and path ~= '' then
+      table.insert(out, path)
+    end
+  end
+end
+
+---@return string[]
+local function detect_dap_bundles()
+  local bundles = {}
+
+  local explicit = vim.env.JDTLS_DAP_BUNDLES
+  if explicit and explicit ~= '' then
+    local separator = vim.fn.has 'win32' == 1 and ';' or ':'
+    for _, item in ipairs(vim.split(explicit, separator, { trimempty = true })) do
+      if vim.fn.filereadable(item) == 1 then
+        table.insert(bundles, item)
+      else
+        extend_with_glob(bundles, item)
+      end
+    end
+    return dedupe_files(bundles)
+  end
+
+  local mason = vim.fn.stdpath 'data' .. '/mason/packages'
+  extend_with_glob(bundles, mason .. '/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar')
+  extend_with_glob(bundles, mason .. '/java-test/extension/server/*.jar')
+  return dedupe_files(bundles)
+end
+
+---@param cfg table
+---@param bundles string[]
+local function apply_dap_bundles(cfg, bundles)
+  if vim.tbl_isempty(bundles) then
+    return
+  end
+  cfg.init_options = type(cfg.init_options) == 'table' and cfg.init_options or {}
+  local existing = type(cfg.init_options.bundles) == 'table' and cfg.init_options.bundles or {}
+  local merged = {}
+  vim.list_extend(merged, existing)
+  vim.list_extend(merged, bundles)
+  cfg.init_options.bundles = dedupe_files(merged)
+end
+
+---@param root string
+---@param bundles string[]
+local function setup_dap(root, bundles)
+  local key = root ~= '' and root or '__global__'
+  if dap_setup_done[key] then
+    return
+  end
+  if vim.tbl_isempty(bundles) then
+    if not dap_warned[key] then
+      dap_warned[key] = true
+      vim.notify('[java3] Java DAP bundles not found. Install `java-debug-adapter` (and optional `java-test`) with Mason.', vim.log.levels.WARN)
+    end
+    return
+  end
+
+  local ok_jdtls, jdtls = pcall(require, 'jdtls')
+  if not ok_jdtls then
+    return
+  end
+  local ok_setup = pcall(jdtls.setup_dap, { hotcodereplace = 'auto' })
+  local ok_main = pcall(function()
+    require('jdtls.dap').setup_dap_main_class_configs()
+  end)
+  if ok_setup and ok_main then
+    dap_setup_done[key] = true
+    return
+  end
+  if not dap_warned[key] then
+    dap_warned[key] = true
+    vim.notify('[java3] Failed to initialize Java DAP integration.', vim.log.levels.WARN)
+  end
+end
+
 ---@param root string
 ---@return JavaCacheEntry
 local function build_cache(root)
@@ -218,6 +323,7 @@ local function build_cache(root)
     lombok_jar = detect_lombok(local_repo),
     maven_offline = truthy 'JDTLS_MAVEN_OFFLINE' or truthy 'MAVEN_OFFLINE',
     import_args = args,
+    dap_bundles = detect_dap_bundles(),
   }
   cache[root] = c
   return c
@@ -489,21 +595,40 @@ return {
       end
     end,
   },
+  -- {
+  --   'mason-org/mason.nvim',
+  --   optional = true,
+  --   event = 'VeryLazy',
+  --   opts = function(_, opts)
+  --     opts = opts or {}
+  --     opts.ensure_installed = opts.ensure_installed or {}
+  --     for _, pkg in ipairs { 'jdtls', 'java-debug-adapter', 'java-test' } do
+  --       if not vim.tbl_contains(opts.ensure_installed, pkg) then
+  --         table.insert(opts.ensure_installed, pkg)
+  --       end
+  --     end
+  --     return opts
+  --   end,
+  -- },
   {
     'mfussenegger/nvim-jdtls',
     ft = java_filetypes,
     dependencies = {
       'neovim/nvim-lspconfig',
       'saghen/blink.cmp',
+      'mfussenegger/nvim-dap',
     },
     opts = { settings = {} },
     config = function(_, opts)
       opts = opts or {}
       opts.settings = type(opts.settings) == 'table' and opts.settings or {}
+      local dap_bundles_by_root = {}
 
       ---@param client table
       ---@param bufnr integer
       local function on_attach(client, bufnr)
+        local root = (client and client.config and client.config.root_dir) or ''
+        setup_dap(root, dap_bundles_by_root[root] or {})
         if type(opts.jdtls) == 'table' and type(opts.jdtls.on_attach) == 'function' then
           opts.jdtls.on_attach(client, bufnr)
         end
@@ -549,6 +674,9 @@ return {
           user_jdtls.on_attach = nil
           cfg = vim.tbl_deep_extend('force', cfg, user_jdtls)
         end
+        apply_dap_bundles(cfg, c.dap_bundles)
+        local cfg_bundles = (type(cfg.init_options) == 'table' and type(cfg.init_options.bundles) == 'table') and cfg.init_options.bundles or c.dap_bundles
+        dap_bundles_by_root[root] = cfg_bundles
 
         vim.g.ba_jdtls_last = {
           root_dir = root,
@@ -560,6 +688,8 @@ return {
           lombok_jar = c.lombok_jar,
           cmd_source = cmd_source,
           workspace_dir = workspace_dir,
+          dap_bundle_count = #cfg_bundles,
+          dap_bundles = cfg_bundles,
         }
 
         require('jdtls').start_or_attach(cfg)

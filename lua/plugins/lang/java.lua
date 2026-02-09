@@ -778,6 +778,9 @@ return {
         opts.adapters['neotest-java'] = vim.tbl_deep_extend('force', existing, {
           junit_jar = junit_jar,
           incremental_build = true,
+          -- The upstream default filters by class name suffixes (Test/Tests/IT/Spec).
+          -- Use a permissive pattern so tests are still discovered in custom naming schemes.
+          test_classname_patterns = { '^.*$' },
         })
       else
         opts.adapters['neotest-java'] = nil

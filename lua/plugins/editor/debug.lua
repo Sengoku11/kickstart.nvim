@@ -98,25 +98,71 @@ return {
 
     -- Dap UI setup
     -- For more information, see |:help nvim-dap-ui|
-    dapui.setup {
-      -- Set icons to characters that are more likely to work in every terminal.
-      --    Feel free to remove or use ones that you like more! :)
-      --    Don't feel like these are good choices.
-      icons = { expanded = '▾', collapsed = '▸', current_frame = '*' },
+    ---@type dapui.Config
+    local dapui_config = {
+      -- Keep these ASCII-only so they render reliably without Nerd Fonts.
+      icons = { expanded = '-', collapsed = '+', current_frame = '*' },
+      mappings = {
+        expand = { '<CR>', '<2-LeftMouse>' },
+        open = 'o',
+        remove = 'd',
+        edit = 'e',
+        repl = 'r',
+        toggle = 't',
+      },
+      element_mappings = {},
+      expand_lines = vim.fn.has 'nvim-0.7' == 1,
+      force_buffers = true,
+      layouts = {
+        {
+          elements = {
+            { id = 'scopes', size = 0.25 },
+            { id = 'breakpoints', size = 0.25 },
+            { id = 'stacks', size = 0.25 },
+            { id = 'watches', size = 0.25 },
+          },
+          size = 40,
+          position = 'left',
+        },
+        {
+          elements = {
+            'repl',
+            'console',
+          },
+          size = 10,
+          position = 'bottom',
+        },
+      },
+      floating = {
+        max_height = nil,
+        max_width = nil,
+        border = 'single',
+        mappings = {
+          close = { 'q', '<Esc>' },
+        },
+      },
       controls = {
+        enabled = vim.fn.exists '+winbar' == 1,
+        element = 'repl',
         icons = {
           pause = '⏸',
           play = '▶',
           step_into = '⏎',
-          step_over = '⏭',
-          step_out = '⏮',
+          step_over = '>>|',
+          step_out = '|<<',
           step_back = 'b',
           run_last = '▶▶',
-          terminate = '⏹',
-          disconnect = '⏏',
+          terminate = '■',
+          disconnect = '▲',
         },
       },
+      render = {
+        max_type_length = nil,
+        max_value_lines = 100,
+        indent = 1,
+      },
     }
+    dapui.setup(dapui_config)
 
     -- Change breakpoint icons
     -- vim.api.nvim_set_hl(0, 'DapBreak', { fg = '#e51400' })

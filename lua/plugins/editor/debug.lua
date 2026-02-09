@@ -145,7 +145,7 @@ return {
         enabled = vim.fn.exists '+winbar' == 1,
         element = 'repl',
         icons = {
-          pause = '⏸',
+          pause = '❚❚',
           play = '▶',
           step_into = '⏎',
           step_over = '>>|',

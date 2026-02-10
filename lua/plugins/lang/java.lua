@@ -727,20 +727,6 @@ local function maven_sync(root, c, force)
   end)
 end
 
-local function debug_nearest_java_test()
-  local ok, neotest = pcall(require, 'neotest')
-  if not ok then
-    vim.notify('[java3] neotest is not available.', vim.log.levels.ERROR)
-    return
-  end
-  local ok_run, err = pcall(function()
-    neotest.run.run { strategy = 'dap' }
-  end)
-  if not ok_run then
-    vim.notify('[java3] Failed to debug nearest test: ' .. tostring(err), vim.log.levels.ERROR)
-  end
-end
-
 return {
   {
     'nvim-treesitter/nvim-treesitter',
@@ -760,7 +746,7 @@ return {
       'antoinemadec/FixCursorHold.nvim',
       'nvim-treesitter/nvim-treesitter',
       {
-        'rcasia/neotest-java',
+        'sergii-dudar/neotest-java', -- FIXME: return back rcasia/neotest-java after bug is fixed
         ft = java_filetypes,
         dependencies = {
           'mfussenegger/nvim-jdtls',
@@ -900,7 +886,21 @@ return {
       ---@param client table
       ---@param bufnr integer
       local function on_attach(client, bufnr)
-        vim.keymap.set('n', '<leader>gt', debug_nearest_java_test, {
+        vim.keymap.set('n', '<leader>gt', function()
+          require('neotest').run.run()
+        end, {
+          buffer = bufnr,
+          desc = 'Java: Test nearest (neotest)',
+        })
+        vim.keymap.set('n', '<leader>gT', function()
+          require('neotest').run.run(vim.fn.expand '%:p')
+        end, {
+          buffer = bufnr,
+          desc = 'Java: Test class/file (neotest)',
+        })
+        vim.keymap.set('n', '<leader>dt', function()
+          require('neotest').run.run { strategy = 'dap' }
+        end, {
           buffer = bufnr,
           desc = 'Java: Debug nearest test (neotest)',
         })

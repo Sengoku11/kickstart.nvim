@@ -308,11 +308,7 @@ local function collect_dap_bundles_from_dirs(debug_dir, test_dir)
     return nil
   end
   local bundles = { debug_bundle }
-  -- Loading vscode-java-test bundles into jdtls is optional and can break when
-  -- versions drift from the server's OSGi dependencies.
-  if truthy 'JDTLS_ENABLE_JAVA_TEST_BUNDLES' then
-    vim.list_extend(bundles, collect_test_bundles(test_dir))
-  end
+  vim.list_extend(bundles, collect_test_bundles(test_dir))
   return dedupe_files(bundles)
 end
 
@@ -398,7 +394,7 @@ local function setup_dap(root, bundles)
     if not dap_warned[key] then
       dap_warned[key] = true
       vim.notify(
-        '[java3] Java debug adapter bundle not found. Place com.microsoft.java.debug.plugin-*.jar under ~/.local/share/java-debug, or set JDTLS_DAP_BUNDLES/JDTLS_DAP_BUNDLES_ROOT.',
+        '[java3] Java DAP bundles not found. Place VS Code jars under ~/.local/share/java-debug and ~/.local/share/java-test, or set JDTLS_DAP_BUNDLES/JDTLS_DAP_BUNDLES_ROOT.',
         vim.log.levels.WARN
       )
     end
@@ -801,6 +797,19 @@ return {
       opts = opts or {}
       local adapter_specs = type(opts.adapters) == 'table' and opts.adapters or {}
       local adapters = {}
+      opts.icons = {
+        expanded = '-',
+        collapsed = '+',
+        child_prefix = '|-',
+        final_child_prefix = '`-',
+        child_indent = '| ',
+        non_collapsible = '-',
+        passed = 'OK',
+        running = '->',
+        failed = 'XX',
+        skipped = '--',
+        unknown = '??',
+      }
 
       ---@param module any
       ---@param adapter_opts table|nil

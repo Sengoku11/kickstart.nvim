@@ -242,7 +242,7 @@ local function detect_neotest_junit_jar()
     append_unique(maven_repos, vim.fs.normalize(expand_path(vim.env.MAVEN_REPO_LOCAL)))
   end
   local import_args = vim.env.JDTLS_MAVEN_IMPORT_ARGUMENTS
-  local import_repo = import_args and import_args:match('%-Dmaven%.repo%.local=([^%s]+)') or nil
+  local import_repo = import_args and import_args:match '%-Dmaven%.repo%.local=([^%s]+)' or nil
   if import_repo and import_repo ~= '' then
     append_unique(maven_repos, vim.fs.normalize(expand_path(import_repo)))
   end
@@ -308,7 +308,11 @@ local function collect_dap_bundles_from_dirs(debug_dir, test_dir)
     return nil
   end
   local bundles = { debug_bundle }
-  vim.list_extend(bundles, collect_test_bundles(test_dir))
+  -- Loading vscode-java-test bundles into jdtls is optional and can break when
+  -- versions drift from the server's OSGi dependencies.
+  if truthy 'JDTLS_ENABLE_JAVA_TEST_BUNDLES' then
+    vim.list_extend(bundles, collect_test_bundles(test_dir))
+  end
   return dedupe_files(bundles)
 end
 
@@ -394,7 +398,7 @@ local function setup_dap(root, bundles)
     if not dap_warned[key] then
       dap_warned[key] = true
       vim.notify(
-        '[java3] Java DAP bundles not found. Place VS Code jars under ~/.local/share/java-debug and ~/.local/share/java-test, or set JDTLS_DAP_BUNDLES/JDTLS_DAP_BUNDLES_ROOT.',
+        '[java3] Java debug adapter bundle not found. Place com.microsoft.java.debug.plugin-*.jar under ~/.local/share/java-debug, or set JDTLS_DAP_BUNDLES/JDTLS_DAP_BUNDLES_ROOT.',
         vim.log.levels.WARN
       )
     end
@@ -778,9 +782,14 @@ return {
         opts.adapters['neotest-java'] = vim.tbl_deep_extend('force', existing, {
           junit_jar = junit_jar,
           incremental_build = true,
-          -- The upstream default filters by class name suffixes (Test/Tests/IT/Spec).
-          -- Use a permissive pattern so tests are still discovered in custom naming schemes.
-          test_classname_patterns = { '^.*$' },
+          -- Include both prefix and suffix naming styles.
+          test_classname_patterns = {
+            '^Test.*$',
+            '^.*Tests?$',
+            '^.*IT$',
+            '^.*Spec$',
+            '^.*$',
+          },
         })
       else
         opts.adapters['neotest-java'] = nil
@@ -793,19 +802,44 @@ return {
       local adapter_specs = type(opts.adapters) == 'table' and opts.adapters or {}
       local adapters = {}
 
+      ---@param module any
+      ---@param adapter_opts table|nil
+      ---@return any|nil
+      local function make_adapter(module, adapter_opts)
+        local mt = type(module) == 'table' and getmetatable(module) or nil
+        local is_callable_table = mt and type(mt.__call) == 'function'
+        if type(module) == 'function' or is_callable_table then
+          local ok_adapter, adapter = pcall(module, adapter_opts or {})
+          return ok_adapter and adapter or nil
+        end
+        if type(module) == 'table' and type(module.setup) == 'function' then
+          local ok_adapter, adapter = pcall(module.setup, adapter_opts or {})
+          if ok_adapter and adapter then
+            return adapter
+          end
+          local ok_method, adapter_method = pcall(module.setup, module, adapter_opts or {})
+          return ok_method and adapter_method or nil
+        end
+        if type(module) == 'table' and type(module.adapter) == 'function' then
+          local ok_adapter, adapter = pcall(module.adapter, adapter_opts or {})
+          if ok_adapter and adapter then
+            return adapter
+          end
+          local ok_method, adapter_method = pcall(module.adapter, module, adapter_opts or {})
+          return ok_method and adapter_method or nil
+        end
+        return module
+      end
+
       if vim.tbl_islist(adapter_specs) then
         adapters = adapter_specs
       else
         for name, adapter_opts in pairs(adapter_specs) do
           local ok_module, module = pcall(require, name)
           if ok_module then
-            if type(module) == 'function' then
-              local ok_adapter, adapter = pcall(module, adapter_opts or {})
-              if ok_adapter and adapter then
-                table.insert(adapters, adapter)
-              end
-            else
-              table.insert(adapters, module)
+            local adapter = make_adapter(module, adapter_opts)
+            if adapter then
+              table.insert(adapters, adapter)
             end
           end
         end

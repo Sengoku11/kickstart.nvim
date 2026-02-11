@@ -81,11 +81,11 @@ end
 local function detect_java_bin()
   local java_home = vim.env.JDTLS_JAVA_HOME or vim.env.JAVA_HOME
   local home_java = (java_home and java_home ~= '') and (java_home .. '/bin/java') or nil
-  return first_executable({
+  return first_executable {
     vim.env.JDTLS_JAVA_BIN,
     home_java,
     vim.fn.exepath 'java',
-  })
+  }
 end
 
 ---@return string|nil, string|nil
@@ -97,10 +97,32 @@ local function detect_jdtls_bin()
   if from_path ~= '' then
     return from_path, 'PATH:jdtls'
   end
+  for _, cand in ipairs {
+    vim.fn.expand '~/.local/bin/jdtls',
+    '/opt/homebrew/bin/jdtls',
+    '/usr/local/bin/jdtls',
+  } do
+    if vim.fn.executable(cand) == 1 then
+      return cand, 'common-bin:' .. cand
+    end
+  end
   local home = vim.env.JDTLS_HOME
   local home_bin = (home and home ~= '') and (home .. '/bin/jdtls') or nil
   if home_bin and vim.fn.executable(home_bin) == 1 then
     return home_bin, 'JDTLS_HOME/bin/jdtls'
+  end
+  local mason_root = vim.fn.stdpath 'data' .. '/mason'
+  local mason_bin = mason_root .. '/bin/jdtls'
+  if vim.fn.executable(mason_bin) == 1 then
+    return mason_bin, 'mason/bin/jdtls'
+  end
+  local mason_pkg_bin = mason_root .. '/packages/jdtls/bin/jdtls'
+  if vim.fn.executable(mason_pkg_bin) == 1 then
+    return mason_pkg_bin, 'mason/packages/jdtls/bin/jdtls'
+  end
+  local mason_pkg = mason_root .. '/packages/jdtls/jdtls'
+  if vim.fn.executable(mason_pkg) == 1 then
+    return mason_pkg, 'mason/packages/jdtls/jdtls'
   end
   return nil, nil
 end
@@ -145,15 +167,15 @@ end
 
 ---@param config_dir string
 ---@param workspace_dir string
----@return string[]|nil, string|nil
+---@return string[]|nil, string|nil, string|nil
 local function build_cmd(config_dir, workspace_dir)
   local java_bin = detect_java_bin()
   if not java_bin then
-    return nil, nil
+    return nil, nil, 'java-not-found'
   end
   local jdtls_bin, jdtls_source = detect_jdtls_bin()
   if not jdtls_bin then
-    return nil, nil
+    return nil, nil, 'jdtls-not-found'
   end
 
   local jvm_args = split_words(vim.env.JDTLS_JVM_ARGS)
@@ -187,7 +209,7 @@ local function build_cmd(config_dir, workspace_dir)
     workspace_dir,
   })
 
-  return cmd, jdtls_source
+  return cmd, jdtls_source, nil
 end
 
 ---@param root string
@@ -391,7 +413,7 @@ return {
     opts = function(_, opts)
       opts = opts or {}
       opts.ensure_installed = opts.ensure_installed or {}
-      for _, pkg in ipairs({ 'jdtls', 'java-debug-adapter', 'java-test' }) do
+      for _, pkg in ipairs { 'jdtls', 'java-debug-adapter', 'java-test' } do
         if not vim.tbl_contains(opts.ensure_installed, pkg) then
           table.insert(opts.ensure_installed, pkg)
         end
@@ -506,11 +528,14 @@ return {
         vim.fn.mkdir(config_dir, 'p')
         vim.fn.mkdir(workspace_dir, 'p')
 
-        local cmd, cmd_source = build_cmd(config_dir, workspace_dir)
+        local cmd, cmd_source, cmd_error = build_cmd(config_dir, workspace_dir)
         if not cmd then
-          if not warned['jdtls-missing'] then
+          if cmd_error == 'java-not-found' and not warned['java-missing'] then
+            warned['java-missing'] = true
+            vim.notify('[java2] Java runtime not found. Set JDTLS_JAVA_BIN/JDTLS_JAVA_HOME/JAVA_HOME or add java to PATH.', vim.log.levels.WARN)
+          elseif cmd_error == 'jdtls-not-found' and not warned['jdtls-missing'] then
             warned['jdtls-missing'] = true
-            vim.notify('[java2] jdtls not found. Install with Mason or set JDTLS_BIN/JDTLS_HOME.', vim.log.levels.WARN)
+            vim.notify('[java2] jdtls not found. Set JDTLS_BIN, JDTLS_HOME, add jdtls to PATH, or install via Mason.', vim.log.levels.WARN)
           end
           return
         end

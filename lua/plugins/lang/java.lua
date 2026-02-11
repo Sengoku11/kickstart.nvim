@@ -410,7 +410,7 @@ local function setup_dap(root, bundles)
   if not ok_jdtls then
     return
   end
-  local ok_setup = pcall(jdtls.setup_dap, { hotcodereplace = 'auto' })
+  local ok_setup = pcall(jdtls.setup_dap, { hotcodereplace = 'auto', config_overrides = {} })
   local ok_main = pcall(function()
     require('jdtls.dap').setup_dap_main_class_configs()
   end)
@@ -778,7 +778,7 @@ return {
       opts = opts or {}
       local adapter_specs = type(opts.adapters) == 'table' and opts.adapters or {}
       local junit_jar = detect_neotest_junit_jar()
-      if not vim.tbl_islist(adapter_specs) then
+      if not vim.islist(adapter_specs) then
         if junit_jar then
           local existing = type(adapter_specs['neotest-java']) == 'table' and adapter_specs['neotest-java'] or {}
           adapter_specs['neotest-java'] = vim.tbl_deep_extend('force', existing, { junit_jar = junit_jar })
@@ -817,7 +817,7 @@ return {
         return module
       end
 
-      if vim.tbl_islist(adapter_specs) then
+      if vim.islist(adapter_specs) then
         adapters = adapter_specs
       else
         for name, adapter_opts in pairs(adapter_specs) do

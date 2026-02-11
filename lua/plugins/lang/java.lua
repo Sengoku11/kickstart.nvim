@@ -740,6 +740,7 @@ return {
   },
   {
     'nvim-neotest/neotest',
+    lazy = true,
     dependencies = {
       'nvim-neotest/nvim-nio',
       'nvim-lua/plenary.nvim',
@@ -754,17 +755,10 @@ return {
         },
       },
     },
-    opts = function(_, opts)
-      opts = opts or {}
-      opts.adapters = type(opts.adapters) == 'table' and opts.adapters or {}
-
-      local junit_jar = detect_neotest_junit_jar()
-      if junit_jar then
-        local existing = type(opts.adapters['neotest-java']) == 'table' and opts.adapters['neotest-java'] or {}
-        opts.adapters['neotest-java'] = vim.tbl_deep_extend('force', existing, {
-          junit_jar = junit_jar,
+    opts = {
+      adapters = {
+        ['neotest-java'] = {
           incremental_build = true,
-          -- Include both prefix and suffix naming styles.
           test_classname_patterns = {
             '^Test.*$',
             '^.*Tests?$',
@@ -772,30 +766,22 @@ return {
             '^.*Spec$',
             '^.*$',
           },
-        })
-      else
-        opts.adapters['neotest-java'] = nil
-      end
-
-      return opts
-    end,
+        },
+      },
+    },
     config = function(_, opts)
       opts = opts or {}
       local adapter_specs = type(opts.adapters) == 'table' and opts.adapters or {}
+      local junit_jar = detect_neotest_junit_jar()
+      if not vim.tbl_islist(adapter_specs) then
+        if junit_jar then
+          local existing = type(adapter_specs['neotest-java']) == 'table' and adapter_specs['neotest-java'] or {}
+          adapter_specs['neotest-java'] = vim.tbl_deep_extend('force', existing, { junit_jar = junit_jar })
+        else
+          adapter_specs['neotest-java'] = nil
+        end
+      end
       local adapters = {}
-      opts.icons = {
-        expanded = '-',
-        collapsed = '+',
-        child_prefix = '|-',
-        final_child_prefix = '`-',
-        child_indent = '| ',
-        non_collapsible = '-',
-        passed = 'OK',
-        running = '->',
-        failed = 'XX',
-        skipped = '--',
-        unknown = '??',
-      }
 
       ---@param module any
       ---@param adapter_opts table|nil
@@ -840,7 +826,7 @@ return {
         end
       end
 
-      if not detect_neotest_junit_jar() and not neotest_warned then
+      if not junit_jar and not neotest_warned then
         neotest_warned = true
         vim.schedule(function()
           vim.notify(

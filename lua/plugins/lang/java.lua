@@ -236,6 +236,8 @@ local function detect_neotest_junit_jar()
   end
 
   local data_home = (vim.env.XDG_DATA_HOME and vim.env.XDG_DATA_HOME ~= '') and vim.env.XDG_DATA_HOME or expand_path '~/.local/share'
+  local nvim_data_home = vim.fs.normalize(vim.fn.stdpath 'data')
+  local mason_packages = nvim_data_home .. '/mason/packages'
   local maven_repos = {}
   append_unique(maven_repos, vim.fs.normalize(expand_path '~/.m2/repository'))
   if vim.env.MAVEN_REPO_LOCAL and vim.env.MAVEN_REPO_LOCAL ~= '' then
@@ -250,7 +252,10 @@ local function detect_neotest_junit_jar()
   local matches = {}
   extend_with_glob(matches, data_home .. '/java-test/junit-platform-console-standalone-*.jar')
   extend_with_glob(matches, data_home .. '/java-test/**/junit-platform-console-standalone-*.jar')
-  extend_with_glob(matches, data_home .. '/nvim/neotest-java/junit-platform-console-standalone-*.jar')
+  extend_with_glob(matches, nvim_data_home .. '/neotest-java/junit-platform-console-standalone-*.jar')
+  extend_with_glob(matches, nvim_data_home .. '/neotest-java/**/junit-platform-console-standalone-*.jar')
+  extend_with_glob(matches, mason_packages .. '/java-test/junit-platform-console-standalone-*.jar')
+  extend_with_glob(matches, mason_packages .. '/java-test/**/junit-platform-console-standalone-*.jar')
   for _, repo in ipairs(maven_repos) do
     extend_with_glob(matches, repo .. '/org/junit/platform/junit-platform-console-standalone/*/junit-platform-console-standalone-*.jar')
   end
@@ -830,7 +835,7 @@ return {
         neotest_warned = true
         vim.schedule(function()
           vim.notify(
-            '[java3] neotest-java disabled: junit-platform-console-standalone JAR not found. Set NEOTEST_JAVA_JUNIT_JAR or place the JAR under ~/.m2/repository or ~/.local/share/java-test.',
+            '[java3] neotest-java disabled: junit-platform-console-standalone JAR not found. Set NEOTEST_JAVA_JUNIT_JAR or place the JAR under ~/.local/share/nvim/neotest-java, ~/.local/share/nvim/mason/packages/java-test, ~/.m2/repository, or ~/.local/share/java-test.',
             vim.log.levels.WARN
           )
         end)

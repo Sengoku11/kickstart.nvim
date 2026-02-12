@@ -9,6 +9,10 @@ return {
     ft = { 'plantuml', 'puml', 'uml', 'markdown' },
     opts = {
       open = 'right',
+      window = {
+        right_width_pct = 0.8, -- ratio 0.0..1.0 (0.0 means no forced sizing)
+        bottom_height_pct = 0.0, -- ratio 0.0..1.0 (0.0 means no forced sizing)
+      },
     },
   },
   {

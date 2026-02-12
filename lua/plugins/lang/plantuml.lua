@@ -3,6 +3,7 @@ return {
     'Sengoku11/plantuml.nvim',
     keys = {
       { '<leader>pl', '<cmd>PlantumlRenderAscii<cr>', desc = 'Render UML Ascii' },
+      { '<leader>pu', '<cmd>PlantumlRenderUtxt<cr>', desc = 'Render UML Unicode' },
       { '<leader>pi', '<cmd>PlantumlRenderImg<cr>', desc = 'Render UML Image' },
     },
     cmd = { 'PlantumlRender' },

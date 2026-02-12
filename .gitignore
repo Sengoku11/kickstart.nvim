@@ -3,6 +3,7 @@ test.sh
 .luarc.json
 nvim
 .nvimlog
+/after/syntax/
 
 *.spl
 lazy-lock.json

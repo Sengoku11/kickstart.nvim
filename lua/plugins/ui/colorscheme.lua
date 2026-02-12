@@ -432,7 +432,7 @@ return {
       vim.g.gruvbox_material_diagnostic_virtual_text = 'grey'
       vim.g.gruvbox_material_disable_terminal_colors = 0
       vim.g.gruvbox_material_better_performance = 1
-      vim.g.gruvbox_material_colors_override = {}
+      vim.g.gruvbox_material_colors_override = vim.empty_dict()
     end,
   },
   {
@@ -459,7 +459,7 @@ return {
       vim.g.everforest_diagnostic_virtual_text = 'grey'
       vim.g.everforest_disable_terminal_colors = 0
       vim.g.everforest_better_performance = 1
-      vim.g.everforest_colors_override = {}
+      vim.g.everforest_colors_override = vim.empty_dict()
     end,
   },
   {
@@ -684,7 +684,7 @@ return {
     init = function()
       -- Defaults from sonokai autoload config (0=false, 1=true).
       vim.g.sonokai_style = 'default'
-      vim.g.sonokai_colors_override = {}
+      vim.g.sonokai_colors_override = vim.empty_dict()
       vim.g.sonokai_transparent_background = 0
       vim.g.sonokai_dim_inactive_windows = 0
       vim.g.sonokai_disable_italic_comment = 1

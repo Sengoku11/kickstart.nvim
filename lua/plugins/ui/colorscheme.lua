@@ -1,3 +1,34 @@
+-- Disable builtin colorschemes
+vim.opt.wildignore:append {
+  -- 'blue.vim',
+  'darkblue.vim',
+  'default.vim',
+  'delek.vim',
+  'desert.vim',
+  'elflord.vim',
+  'evening.vim',
+  'habamax.vim',
+  'industry.vim',
+  'koehler.vim',
+  'lunaperche.vim',
+  'morning.vim',
+  'murphy.vim',
+  'pablo.vim',
+  'peachpuff.vim',
+  'quiet.vim',
+  'retrobox.vim',
+  'ron.vim',
+  'shine.vim',
+  'slate.vim',
+  'sorbet.vim',
+  'torte.vim',
+  'unokai.vim',
+  'vim.lua',
+  'wildcharm.vim',
+  'zaibatsu.vim',
+  'zellner.vim',
+}
+
 return {
   -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
   {

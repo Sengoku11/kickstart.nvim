@@ -25,6 +25,7 @@ require('lazy').setup {
     { import = 'plugins.lang.markdown' },
     { import = 'plugins.lang.java' },
     { import = 'plugins.lang.grammar' },
+    { import = 'plugins.lang.plantuml' },
     { import = 'plugins.uncategorized' },
   },
   ui = {

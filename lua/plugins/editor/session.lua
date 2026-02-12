@@ -9,6 +9,7 @@ local unload_fts = {
   ['undotree'] = true,
   ['diff'] = true,
   ['neo-tree'] = true,
+  ['plantuml_ascii'] = true,
 }
 
 vim.api.nvim_create_autocmd('User', {

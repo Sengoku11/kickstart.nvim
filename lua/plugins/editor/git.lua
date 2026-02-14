@@ -37,6 +37,9 @@ return {
     opts = {
       footer = true,
       stage_files = true, -- Display staged files in UI
+      hints = {
+        controls = true, -- Display control hints in the popup border
+      },
     },
   },
 

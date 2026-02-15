@@ -133,6 +133,7 @@ debounced
 defi
 denormalized
 desc
+deterministically
 dev
 devnet
 dir
@@ -163,6 +164,7 @@ featureflags
 fifo
 filename
 filenames
+filepath
 filesystem
 filetype
 filetypes
@@ -182,6 +184,7 @@ frontend
 fs
 fullscreen
 fullstack
+func
 fzf
 gRPC
 gaslimit
@@ -259,6 +262,7 @@ keybinding
 keybindings
 keymap
 keymaps
+keypress
 kibana
 kickstart
 kubeadm
@@ -356,6 +360,7 @@ png
 pnpm
 podman
 popup
+precalculate
 preconfigured
 premade
 prettier
@@ -385,6 +390,7 @@ rebased
 rebasing
 rediscli
 redpanda
+refetch
 regexes
 renderer
 repo
@@ -486,6 +492,7 @@ upcast
 upsert
 upserts
 upstream
+upvalue
 uri
 url
 usize

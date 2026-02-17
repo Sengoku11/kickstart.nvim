@@ -68,7 +68,7 @@ return {
 
         Snacks.picker.grep {
           search = text,
-          regex = false,
+          regex = true,
         }
       end
     end,

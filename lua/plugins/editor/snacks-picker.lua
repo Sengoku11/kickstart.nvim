@@ -81,6 +81,22 @@ return {
             dev = { '~/projects', '~/dev', '~/code' },
             patterns = { '.git', '_darcs', '.hg', '.bzr', '.svn', 'package.json', 'Makefile', '.project' },
             max_depth = 5,
+            filter = (function()
+              local project_excludes = vim.tbl_map(vim.fs.normalize, {
+                '~/projects/archive',
+              })
+              return {
+                filter = function(item)
+                  local path = vim.fs.normalize(item.file or '')
+                  for _, blocked in ipairs(project_excludes) do
+                    if path == blocked or path:find('^' .. vim.pesc(blocked .. '/')) then
+                      return false
+                    end
+                  end
+                  return true
+                end,
+              }
+            end)(),
           },
         },
         win = {

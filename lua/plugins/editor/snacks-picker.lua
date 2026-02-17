@@ -1,4 +1,39 @@
----@module 'snacks'
+local Snacks = require('snacks')
+
+local function load_project_session_clean(picker, item)
+  picker:close()
+  if not item then
+    return
+  end
+
+  local session_loaded = false
+  vim.api.nvim_create_autocmd('SessionLoadPost', {
+    once = true,
+    callback = function()
+      session_loaded = true
+    end,
+  })
+
+  local ok_persistence, persistence = pcall(require, 'persistence')
+  if ok_persistence and persistence.active and persistence.active() then
+    pcall(persistence.save)
+  end
+
+  Snacks.bufdelete.all()
+  vim.fn.chdir(item.file)
+
+  local session = Snacks.dashboard.sections.session()
+  if session then
+    vim.cmd(session.action:sub(2))
+  end
+
+  vim.defer_fn(function()
+    if not session_loaded then
+      Snacks.picker.files()
+    end
+  end, 100)
+end
+
 return {
   {
     'folke/snacks.nvim',
@@ -27,6 +62,11 @@ return {
 
     opts = {
       picker = {
+        sources = {
+          projects = {
+            confirm = load_project_session_clean,
+          },
+        },
         win = {
           input = {
             -- stylua: ignore
@@ -34,7 +74,6 @@ return {
           },
         },
         prompt = ' > ',
-        ---@field icons? snacks.picker.icons
         icons = {
           files = {
             enabled = vim.g.have_nerd_font,
@@ -154,8 +193,8 @@ return {
     optional = true,
     -- stylua: ignore
     keys = {
-      { "<leader>st", function() Snacks.picker.todo_comments() end, desc = "Todo" },
-      { "<leader>sT", function () Snacks.picker.todo_comments({ keywords = { "TODO", "FIX", "FIXME" } }) end, desc = "Todo/Fix/Fixme" },
+      { "<leader>st", function() Snacks.picker('todo_comments') end, desc = "Todo" },
+      { "<leader>sT", function () Snacks.picker('todo_comments', { keywords = { "TODO", "FIX", "FIXME" } }) end, desc = "Todo/Fix/Fixme" },
     },
   },
 

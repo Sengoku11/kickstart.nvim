@@ -1,4 +1,4 @@
-local Snacks = require('snacks')
+local Snacks = require 'snacks'
 
 local function fire_persistence_event(event)
   pcall(vim.api.nvim_exec_autocmds, 'User', {
@@ -24,9 +24,9 @@ local function load_project_session_clean(picker, item)
   local ok_colorscheme, colorscheme = pcall(require, 'ba.util.colorscheme')
 
   if ok_persistence and persistence.active and persistence.active() then
-    fire_persistence_event('SavePre')
+    fire_persistence_event 'SavePre'
     if pcall(persistence.save) then
-      fire_persistence_event('SavePost')
+      fire_persistence_event 'SavePost'
     end
   elseif ok_colorscheme then
     pcall(colorscheme.save_for_session)
@@ -78,6 +78,7 @@ return {
         sources = {
           projects = {
             confirm = load_project_session_clean,
+            patterns = { '.git', '_darcs', '.hg', '.bzr', '.svn', 'package.json', 'Makefile', '.project' },
           },
         },
         win = {

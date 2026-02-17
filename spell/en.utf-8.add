@@ -260,6 +260,10 @@ kafkamq
 kafkatool
 keybinding
 keybindings
+keychain
+keychains
+keycode
+keycodes
 keymap
 keymaps
 keypress
@@ -484,6 +488,7 @@ unicode
 unintuitive
 uniswap
 unixms
+unstage
 unstaged
 unstash
 unstashed

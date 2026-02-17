@@ -3,6 +3,8 @@ return {
     'folke/which-key.nvim',
     event = 'VeryLazy',
     opts = {
+      ---@type false | "classic" | "modern" | "helix"
+      preset = 'classic',
       -- delay between pressing a key and opening which-key (milliseconds)
       -- this setting is independent of vim.o.timeoutlen
       delay = 0,
@@ -43,7 +45,7 @@ return {
         },
       },
 
-      -- Document existing key chains
+      -- Document existing keychains
       spec = {
         { '<leader>s', group = 'search' },
         { '<leader>t', group = 'toggle' },

@@ -39,6 +39,7 @@ return {
       stage_files = true, -- Display staged files in UI
       hints = {
         controls = true, -- Display control hints in the popup border
+        titles = false, -- Display annotations in popup titles
       },
       mappings = {
         commit = '<leader><CR>',

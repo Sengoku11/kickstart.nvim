@@ -78,7 +78,9 @@ return {
         sources = {
           projects = {
             confirm = load_project_session_clean,
+            dev = { '~/projects', '~/dev', '~/code' },
             patterns = { '.git', '_darcs', '.hg', '.bzr', '.svn', 'package.json', 'Makefile', '.project' },
+            max_depth = 5,
           },
         },
         win = {

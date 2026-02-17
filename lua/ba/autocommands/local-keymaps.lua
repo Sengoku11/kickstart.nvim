@@ -1,8 +1,7 @@
--- This file is automatically loaded by ba.autocommands.init.
-
 -- Filetype-local mappings grouped in one place.
-local close_with_q_filetypes = { 'qf' }
+local close_with_q_filetypes = { 'qf', 'help' }
 
+-- Map `q` to close for configured utility filetypes.
 vim.api.nvim_create_autocmd('FileType', {
   pattern = close_with_q_filetypes,
   callback = function(event)
@@ -12,4 +11,5 @@ vim.api.nvim_create_autocmd('FileType', {
       desc = 'Close quickfix window',
     })
   end,
+  desc = 'Map q to close for selected filetypes',
 })

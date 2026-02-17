@@ -12,6 +12,9 @@ local unload_fts = {
   ['plantuml_ascii'] = true,
 }
 
+-- Store colorschemes in sessions
+require('ba.util.colorscheme').setup_session_persistence()
+
 vim.api.nvim_create_autocmd('User', {
   pattern = 'PersistenceSavePre',
   callback = function()

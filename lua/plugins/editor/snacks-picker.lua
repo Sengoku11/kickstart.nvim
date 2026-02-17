@@ -1,5 +1,11 @@
 local Snacks = require('snacks')
 
+local function fire_persistence_event(event)
+  pcall(vim.api.nvim_exec_autocmds, 'User', {
+    pattern = 'Persistence' .. event,
+  })
+end
+
 local function load_project_session_clean(picker, item)
   picker:close()
   if not item then
@@ -15,8 +21,15 @@ local function load_project_session_clean(picker, item)
   })
 
   local ok_persistence, persistence = pcall(require, 'persistence')
+  local ok_colorscheme, colorscheme = pcall(require, 'ba.util.colorscheme')
+
   if ok_persistence and persistence.active and persistence.active() then
-    pcall(persistence.save)
+    fire_persistence_event('SavePre')
+    if pcall(persistence.save) then
+      fire_persistence_event('SavePost')
+    end
+  elseif ok_colorscheme then
+    pcall(colorscheme.save_for_session)
   end
 
   Snacks.bufdelete.all()

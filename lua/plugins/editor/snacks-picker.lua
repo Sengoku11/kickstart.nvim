@@ -42,6 +42,9 @@ local function load_project_session_clean(picker, item)
 
   vim.defer_fn(function()
     if not session_loaded then
+      if ok_colorscheme then
+        pcall(colorscheme.apply, colorscheme.default_name(), { notify = true })
+      end
       Snacks.picker.files()
     end
   end, 100)

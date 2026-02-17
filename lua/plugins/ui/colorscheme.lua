@@ -29,6 +29,8 @@ vim.opt.wildignore:append {
   'zellner.vim',
 }
 
+vim.g.ba_default_colorscheme = 'tokyonight-moon'
+
 return {
   -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
   {
@@ -61,7 +63,7 @@ return {
     },
     config = function(_, opts)
       require('tokyonight').setup(opts)
-      vim.cmd.colorscheme 'tokyonight-moon'
+      require('ba.util.colorscheme').apply(vim.g.ba_default_colorscheme, { notify = true })
     end,
   },
   {

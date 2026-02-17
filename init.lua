@@ -60,8 +60,8 @@ vim.o.linebreak = true -- Wrap at words, not arbitrary characters
 -- Disable vertical / horizontal scroll by mouse and trackpad.
 vim.o.mousescroll = 'ver:3,hor:0'
 
--- When non-empty, this option determines the content of the area to the
--- side of a window, normally containing the fold, sign and number columns.
+-- When nonempty, this option determines the content of the area to the
+-- side of a window, normally containing the fold, sign, and number columns.
 vim.o.statuscolumn = [[%!v:lua.require'snacks.statuscolumn'.get()]]
 
 -- Folds with a higher level will be closed by default.

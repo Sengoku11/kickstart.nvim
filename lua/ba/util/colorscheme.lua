@@ -1,6 +1,7 @@
 ---@class BA.util.colorscheme
 local M = {}
 local session_state_file = vim.fn.stdpath('state') .. '/colorscheme-sessions.json'
+local fallback_default = 'tokyonight-moon'
 
 ---@param value unknown
 ---@return table<string, string>
@@ -86,22 +87,40 @@ end
 
 ---@return string?
 function M.session_file()
+  local ok_persistence, persistence = pcall(require, 'persistence')
+  if ok_persistence and type(persistence.current) == 'function' then
+    local ok_current, session = pcall(persistence.current)
+    if ok_current then
+      local current = normalize_path(session)
+      if current then
+        return current
+      end
+    end
+
+    local ok_current_fallback, fallback = pcall(persistence.current, { branch = false })
+    if ok_current_fallback then
+      local current_fallback = normalize_path(fallback)
+      if current_fallback then
+        return current_fallback
+      end
+    end
+  end
+
   local this_session = normalize_path(vim.v.this_session)
   if this_session then
     return this_session
   end
 
-  local ok_persistence, persistence = pcall(require, 'persistence')
-  if not ok_persistence or type(persistence.current) ~= 'function' then
-    return nil
-  end
+  return nil
+end
 
-  local ok_current, session = pcall(persistence.current)
-  if not ok_current then
-    return nil
+---@return string
+function M.default_name()
+  local name = vim.g.ba_default_colorscheme
+  if type(name) == 'string' and name ~= '' then
+    return name
   end
-
-  return normalize_path(session)
+  return fallback_default
 end
 
 ---@param name string
@@ -149,7 +168,7 @@ function M.restore_for_session()
   local state = load_state()
   local colors_name = state[session_file]
   if type(colors_name) ~= 'string' or colors_name == '' then
-    return false
+    return M.apply(M.default_name(), { notify = true })
   end
 
   return M.apply(colors_name, { notify = true })

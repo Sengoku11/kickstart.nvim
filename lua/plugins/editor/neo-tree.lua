@@ -25,7 +25,10 @@ return {
         sidebar = 'global',
         current = 'window',
       },
-      follow_current_file = { enabled = true },
+      follow_current_file = {
+        enabled = true,
+        leave_dirs_open = true, -- `false` closes auto expanded dirs, such as with `:Neotree reveal`
+      },
       use_libuv_file_watcher = true,
       group_empty_dirs = true,
       filtered_items = {
@@ -407,6 +410,7 @@ return {
       opts.filesystem.window.mappings.l = 'recursive_open'
     end
 
+    -- stylua: ignore
     for _, source in ipairs { 'filesystem', 'buffers', 'git_status' } do
       opts[source] = opts[source] or {}
       opts[source].components = opts[source].components or {}

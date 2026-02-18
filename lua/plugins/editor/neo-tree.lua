@@ -32,6 +32,8 @@ return {
       use_libuv_file_watcher = true,
       group_empty_dirs = true,
       filtered_items = {
+        hide_dotfiles = false,
+        hide_gitignored = true,
         always_show = { -- remains visible even if other settings would normally hide it
           '.gitignore',
           '.stylua.toml',

@@ -93,7 +93,7 @@ function M.diff_with_blame_commit()
     path_at_commit = vim.fn.fnamemodify(file_abs, ':.')
   end
 
-  -- Resolve parent (first parent is fine for line-introducing commits)
+  -- Resolve parent (first parent is fine to use for line-introducing commits)
   vim.fn.system { 'git', 'rev-parse', '-q', '--verify', sha .. '^' }
   local has_parent = (vim.v.shell_error == 0)
   local parent = has_parent and (sha .. '^') or '4b825dc642cb6eb9a060e54bf8d69288fbee4904' -- empty tree
@@ -177,7 +177,7 @@ function M.diff_with_blame_commit()
 
   local function map_q(buf)
     vim.keymap.set('n', 'q', function()
-      pcall(vim.cmd, 'diffoff!')
+      pcall(vim.api.nvim_command, 'diffoff!')
       -- wipe scratch buffers
       if vim.api.nvim_buf_is_valid(buf_left) then
         pcall(vim.api.nvim_buf_delete, buf_left, { force = true })
@@ -188,7 +188,7 @@ function M.diff_with_blame_commit()
 
       -- If we have multiple tabs, close this tab; otherwise just restore view.
       if vim.fn.tabpagenr '$' > 1 then
-        pcall(vim.cmd, 'tabclose')
+        pcall(vim.api.nvim_command, 'tabclose')
       else
         -- close windows if they still exist
         if vim.api.nvim_win_is_valid(win_left) then

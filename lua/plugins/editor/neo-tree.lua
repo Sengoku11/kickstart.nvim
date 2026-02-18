@@ -160,7 +160,7 @@ return {
       diagnostics = BA.config.icons.explorer_diagnostics,
     }
 
-    local function get_explorer_icons()
+    local function load_explorer_icons()
       local icons = vim.deepcopy(fallback_explorer_icons)
       local ok_cfg, picker_cfg = pcall(require, 'snacks.picker.config')
       if ok_cfg and type(picker_cfg.get) == 'function' then
@@ -170,6 +170,18 @@ return {
         end
       end
       return icons
+    end
+
+    local explorer_icons = load_explorer_icons()
+    local explorer_git_icons = explorer_icons.git or {}
+    local explorer_diag_icons = explorer_icons.diagnostics or {}
+
+    local snacks_git_status
+    do
+      local ok_git, git_source = pcall(require, 'snacks.picker.source.git')
+      if ok_git and type(git_source.git_status) == 'function' then
+        snacks_git_status = git_source.git_status
+      end
     end
 
     local function tree_indent(config, node, state)
@@ -247,18 +259,15 @@ return {
         end
       end
 
-      local ok_git, git_source = pcall(require, 'snacks.picker.source.git')
-      if not ok_git or type(git_source.git_status) ~= 'function' then
+      if type(snacks_git_status) ~= 'function' then
         return default_common_components.git_status(config, node, state)
       end
 
-      local ok_status, status = pcall(git_source.git_status, xy)
+      local ok_status, status = pcall(snacks_git_status, xy)
       if not ok_status or type(status) ~= 'table' then
         return default_common_components.git_status(config, node, state)
       end
 
-      local icons = get_explorer_icons()
-      local git_icons = icons.git or {}
       local icon = (status.status or ''):sub(1, 1):upper()
       if status.status == 'untracked' then
         icon = '?'
@@ -266,13 +275,13 @@ return {
         icon = '!'
       end
 
-      if git_icons.enabled ~= false then
-        local candidate = git_icons[status.unmerged and 'unmerged' or status.status]
+      if explorer_git_icons.enabled ~= false then
+        local candidate = explorer_git_icons[status.unmerged and 'unmerged' or status.status]
         if type(candidate) == 'string' and candidate ~= '' then
           icon = candidate
         end
         if status.staged then
-          local staged = git_icons.staged
+          local staged = explorer_git_icons.staged
           if type(staged) == 'string' and staged ~= '' then
             icon = staged
           end
@@ -486,9 +495,8 @@ return {
     end
 
     local function sync_icons_from_snacks()
-      local icons = get_explorer_icons()
-      local snacks_git = icons.git or {}
-      local snacks_diag = icons.diagnostics or {}
+      local snacks_git = explorer_git_icons
+      local snacks_diag = explorer_diag_icons
 
       opts.default_component_configs = opts.default_component_configs or {}
       opts.default_component_configs.diagnostics = opts.default_component_configs.diagnostics or {}

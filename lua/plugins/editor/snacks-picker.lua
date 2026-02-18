@@ -12,6 +12,12 @@ local function load_project_session_clean(picker, item)
     return
   end
 
+  local target_dir = item.file
+  if type(target_dir) ~= 'string' or target_dir == '' then
+    vim.notify('[projects] No project path selected.', vim.log.levels.ERROR)
+    return
+  end
+
   local session_loaded = false
   vim.api.nvim_create_autocmd('SessionLoadPost', {
     once = true,
@@ -32,12 +38,25 @@ local function load_project_session_clean(picker, item)
     pcall(colorscheme.save_for_session)
   end
 
-  Snacks.bufdelete.all()
-  vim.fn.chdir(item.file)
+  local ok_chdir, chdir_err = pcall(vim.api.nvim_set_current_dir, target_dir)
+  if not ok_chdir then
+    vim.notify('[projects] Failed to switch to "' .. target_dir .. '".\n' .. tostring(chdir_err), vim.log.levels.ERROR)
+    return
+  end
+
+  local ok_clean, clean_err = pcall(Snacks.bufdelete.all)
+  if not ok_clean then
+    vim.notify('[projects] Failed to close buffers cleanly.\n' .. tostring(clean_err), vim.log.levels.WARN)
+  end
 
   local session = Snacks.dashboard.sections.session()
-  if session then
-    vim.cmd(session.action:sub(2))
+  if session and session.action then
+    local ok_session, session_err = pcall(function()
+      vim.cmd(session.action:sub(2))
+    end)
+    if not ok_session then
+      vim.notify('[projects] Failed to load session.\n' .. tostring(session_err), vim.log.levels.WARN)
+    end
   end
 
   vim.defer_fn(function()

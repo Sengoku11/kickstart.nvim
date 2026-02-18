@@ -306,6 +306,107 @@ return {
       }
     end
 
+    local function setup_recursive_open_mapping()
+      opts.filesystem = opts.filesystem or {}
+      opts.filesystem.commands = opts.filesystem.commands or {}
+      opts.filesystem.window = opts.filesystem.window or {}
+      opts.filesystem.window.mappings = opts.filesystem.window.mappings or {}
+
+      local fs = require 'neo-tree.sources.filesystem'
+      local renderer = require 'neo-tree.ui.renderer'
+
+      local function get_single_directory_child(state, node)
+        if not (state and state.tree and node and node:has_children()) then
+          return nil
+        end
+        local children = state.tree:get_nodes(node:get_id()) or {}
+        if #children ~= 1 then
+          return nil
+        end
+        local child = children[1]
+        if child and child.type == 'directory' then
+          return child
+        end
+        return nil
+      end
+
+      local function open_directory_chain(state, depth)
+        if depth > 128 then
+          return
+        end
+
+        local node = state and state.tree and state.tree:get_node()
+        if not node or node.type ~= 'directory' then
+          return
+        end
+
+        if node:is_expanded() or node.empty_expanded then
+          local child = get_single_directory_child(state, node)
+          if child then
+            renderer.focus_node(state, child:get_id())
+            vim.schedule(function()
+              open_directory_chain(state, depth + 1)
+            end)
+          end
+          return
+        end
+
+        local before_id = node:get_id()
+
+        local function continue_open()
+          vim.schedule(function()
+            local current = state and state.tree and state.tree:get_node()
+            if not current or current.type ~= 'directory' then
+              return
+            end
+
+            if current:get_id() ~= before_id then
+              open_directory_chain(state, depth + 1)
+              return
+            end
+
+            if current:is_expanded() or current.empty_expanded then
+              local child = get_single_directory_child(state, current)
+              if child then
+                renderer.focus_node(state, child:get_id())
+                vim.schedule(function()
+                  open_directory_chain(state, depth + 1)
+                end)
+              end
+            end
+          end)
+        end
+
+        if node.loaded == false then
+          fs.toggle_directory(state, node, before_id, nil, nil, continue_open)
+        else
+          fs.toggle_directory(state, node, node:get_id())
+          continue_open()
+        end
+      end
+
+      opts.filesystem.commands.recursive_open = function(state)
+        local node = state and state.tree and state.tree:get_node()
+        if not node then
+          return
+        end
+        if node.type ~= 'directory' then
+          if state.commands and type(state.commands.open) == 'function' then
+            state.commands.open(state)
+          end
+          return
+        end
+        if node:is_expanded() or node.empty_expanded then
+          fs.toggle_directory(state, node, node:get_id())
+          return
+        end
+        open_directory_chain(state, 0)
+      end
+
+      opts.filesystem.window.mappings['<CR>'] = 'recursive_open'
+      opts.filesystem.window.mappings.l = 'recursive_open'
+    end
+
     for _, source in ipairs { 'filesystem', 'buffers', 'git_status' } do
       opts[source] = opts[source] or {}
       opts[source].components = opts[source].components or {}
@@ -419,6 +520,7 @@ return {
         end,
       },
     })
+    setup_recursive_open_mapping()
     sync_icons_from_snacks()
     require('neo-tree').setup(opts)
     if vim.fn.maparg('<C-w>h', 'n') == '' then

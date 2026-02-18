@@ -8,8 +8,15 @@ vim.api.nvim_create_autocmd('FileType', {
   group = aug,
   pattern = { 'git', 'fugitive', 'fugitiveblame' },
   callback = function(ev)
+    local fugitive_win = vim.api.nvim_get_current_win()
+
     vim.keymap.set('n', 'q', function()
-      if vim.fn.bufnr '$' == 1 then
+      if vim.fn.winnr '#' > 0 then
+        vim.cmd 'wincmd p'
+        if vim.api.nvim_win_is_valid(fugitive_win) then
+          pcall(vim.api.nvim_win_close, fugitive_win, true)
+        end
+      elseif vim.fn.bufnr '$' == 1 then
         vim.cmd 'quit'
       else
         vim.cmd 'bdelete'

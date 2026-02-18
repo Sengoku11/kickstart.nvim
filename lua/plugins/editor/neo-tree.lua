@@ -11,8 +11,8 @@ return {
     'MunifTanjim/nui.nvim',
   },
   keys = {
-    { '\\', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
-    -- { '<leader>e', ':Neotree reveal<CR>', desc = 'NeoTree reveal', silent = true },
+    { '\\', ':Neotree toggle<CR>', desc = 'NeoTree toggle', silent = true },
+    -- { '<leader>e', ':Neotree toggle<CR>', desc = 'NeoTree toggle', silent = true },
     { '<leader>os', ':Neotree git_status<CR>', desc = 'NeoTree Open Git Status', silent = true },
     { '<leader>ob', ':Neotree buffers<CR>', desc = 'NeoTree Open Buffers', silent = true },
   },
@@ -310,6 +310,7 @@ return {
       opts[source] = opts[source] or {}
       opts[source].components = opts[source].components or {}
       opts[source].components.indent = tree_indent
+      opts[source].components.icon = function() return {} end
       opts[source].components.git_status = tree_git_status
     end
 
@@ -323,8 +324,8 @@ return {
         NeoTreeFloatBorder = 'SnacksPickerBorder',
         NeoTreeFloatTitle = 'SnacksPickerTitle',
         NeoTreeTitleBar = 'SnacksPickerTitle',
-        NeoTreeVertSplit = 'SnacksPickerBorder',
-        NeoTreeWinSeparator = 'SnacksPickerBorder',
+        NeoTreeVertSplit = 'WinSeparator',
+        NeoTreeWinSeparator = 'WinSeparator',
         NeoTreeDirectoryName = 'SnacksPickerDirectory',
         NeoTreeFileName = 'SnacksPickerFile',
         NeoTreeFileNameOpened = 'SnacksPickerFile',

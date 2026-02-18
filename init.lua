@@ -104,6 +104,7 @@ BA.util = require 'ba.util'
 
 -- Load autocommands.
 require 'ba.autocommands'
+require 'ba.keymaps'
 
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`

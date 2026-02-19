@@ -6,6 +6,22 @@ local function fire_persistence_event(event)
   })
 end
 
+local function persist_undo_state_for_clean_switch()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name ~= '' and vim.bo[buf].buftype == '' and vim.bo[buf].undofile and not vim.bo[buf].modified then
+        local undofile = vim.fn.undofile(name)
+        if type(undofile) == 'string' and undofile ~= '' then
+          pcall(vim.api.nvim_buf_call, buf, function()
+            vim.cmd('silent! wundo! ' .. vim.fn.fnameescape(undofile))
+          end)
+        end
+      end
+    end
+  end
+end
+
 local function load_project_session_clean(picker, item)
   picker:close()
   if not item then
@@ -37,6 +53,9 @@ local function load_project_session_clean(picker, item)
   elseif ok_colorscheme then
     pcall(colorscheme.save_for_session)
   end
+
+  -- Keep clean switch semantics while preserving undo trees for unchanged files.
+  persist_undo_state_for_clean_switch()
 
   local ok_chdir, chdir_err = pcall(vim.api.nvim_set_current_dir, target_dir)
   if not ok_chdir then

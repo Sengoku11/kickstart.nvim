@@ -1,5 +1,10 @@
 local Snacks = require 'snacks'
 
+local grep_exclude = {
+  'wiki.md',
+  -- 'path/to/dir/**', -- Example directory exclude
+}
+
 local function fire_persistence_event(event)
   pcall(vim.api.nvim_exec_autocmds, 'User', {
     pattern = 'Persistence' .. event,
@@ -117,6 +122,12 @@ return {
     opts = {
       picker = {
         sources = {
+          grep = {
+            exclude = grep_exclude,
+          },
+          grep_word = {
+            exclude = grep_exclude,
+          },
           projects = {
             confirm = load_project_session_clean,
             dev = { '~/projects', '~/dev', '~/code' },

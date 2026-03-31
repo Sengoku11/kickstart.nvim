@@ -1,5 +1,6 @@
 -- Prevent opening empty buffer on session restore.
 local unload_fts = {
+  ['codecompanion'] = true,
   ['copilot-chat'] = true,
   ['snacks_layout_box'] = true, -- snacks.explorer
   ['Trouble'] = true,

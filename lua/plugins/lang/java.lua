@@ -752,7 +752,7 @@ return {
       'antoinemadec/FixCursorHold.nvim',
       'nvim-treesitter/nvim-treesitter',
       {
-        'sergii-dudar/neotest-java', -- FIXME: return back rcasia/neotest-java after bug is fixed
+        'rcasia/neotest-java',
         ft = java_filetypes,
         dependencies = {
           'mfussenegger/nvim-jdtls',

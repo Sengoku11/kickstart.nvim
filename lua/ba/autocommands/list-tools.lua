@@ -179,6 +179,7 @@ local function commentstring_context(line)
     prefix = indent .. marker,
     body = rest:sub(#marker + 1),
     is_comment = true,
+    indent = indent,
     key = indent .. marker_key,
   }
 end
@@ -198,6 +199,7 @@ local function fallback_comment_context(line)
         prefix = prefix,
         body = body,
         is_comment = true,
+        indent = indent,
         key = key,
       }
     end
@@ -214,6 +216,7 @@ local function line_context(line)
       prefix = '',
       body = line,
       is_comment = false,
+      indent = line_indent(line),
       key = '',
     }
 end
@@ -246,11 +249,7 @@ local function current_block_range(current, current_context, min_indent)
   local first = current
   while first > 1 do
     local previous = line_context(vim.fn.getline(first - 1))
-    if
-      context_blank(previous)
-      or not same_context(current_context, previous)
-      or (min_indent > 0 and #line_indent(previous.body) < min_indent)
-    then
+    if context_blank(previous) or not same_context(current_context, previous) or (min_indent > 0 and #line_indent(previous.body) < min_indent) then
       break
     end
     first = first - 1
@@ -259,11 +258,7 @@ local function current_block_range(current, current_context, min_indent)
   local last = current
   while last < line_count do
     local next_line = line_context(vim.fn.getline(last + 1))
-    if
-      context_blank(next_line)
-      or not same_context(current_context, next_line)
-      or (min_indent > 0 and #line_indent(next_line.body) < min_indent)
-    then
+    if context_blank(next_line) or not same_context(current_context, next_line) or (min_indent > 0 and #line_indent(next_line.body) < min_indent) then
       break
     end
     last = last + 1
@@ -296,11 +291,7 @@ local function current_indent_targets()
 
   for lnum = first, last do
     local context = line_context(vim.fn.getline(lnum))
-    if
-      not context_blank(context)
-      and same_context(current_context, context)
-      and line_indent(context.body) == current_indent
-    then
+    if not context_blank(context) and same_context(current_context, context) and line_indent(context.body) == current_indent then
       targets[#targets + 1] = lnum
     end
   end
@@ -312,15 +303,17 @@ local function current_indent_spans()
   local current = vim.fn.line '.'
   local current_context = line_context(vim.fn.getline(current))
   if context_blank(current_context) then
-    return current, current, {
+    return current,
+      current,
       {
-        first = current,
-        last = current,
-        index = 1,
-        key = current_context.body,
-        lines = { current_context.raw },
-      },
-    }
+        {
+          first = current,
+          last = current,
+          index = 1,
+          key = current_context.body,
+          lines = { current_context.raw },
+        },
+      }
   end
 
   local current_indent = line_indent(current_context.body)
@@ -329,11 +322,7 @@ local function current_indent_spans()
 
   for lnum = first, last do
     local context = line_context(vim.fn.getline(lnum))
-    if
-      not context_blank(context)
-      and same_context(current_context, context)
-      and line_indent(context.body) == current_indent
-    then
+    if not context_blank(context) and same_context(current_context, context) and line_indent(context.body) == current_indent then
       starts[#starts + 1] = lnum
     end
   end
@@ -406,6 +395,21 @@ local function set_target_lines(targets, contexts, bodies)
   for index, lnum in ipairs(targets) do
     vim.fn.setline(lnum, contexts[index].prefix .. bodies[index])
   end
+end
+
+local function minimum_indent(lines)
+  local min_indent = nil
+
+  for _, line in ipairs(lines) do
+    if not line:match '^%s*$' then
+      local indent = line_indent(line)
+      if not min_indent or #indent < #min_indent then
+        min_indent = indent
+      end
+    end
+  end
+
+  return min_indent or ''
 end
 
 local function sort_entries(entries)
@@ -508,13 +512,12 @@ end
 local function infer_number_style(lines)
   for _, line in ipairs(lines) do
     if not line:match '^%s*$' then
-      return parse_number_style(line)
-        or {
-          kind = 'arabic',
-          start = 1,
-          separator = '.',
-          width = 1,
-        }
+      return parse_number_style(line) or {
+        kind = 'arabic',
+        start = 1,
+        separator = '.',
+        width = 1,
+      }
     end
   end
 
@@ -645,6 +648,53 @@ end
 
 function M.clean_range(first, last)
   M.clean_targets(range_targets(first, last))
+end
+
+function M.toggle_comment_targets(targets)
+  local marker = line_comment_marker()
+  if not marker then
+    vim.notify('List tools: no line comment marker for this buffer', vim.log.levels.WARN)
+    return
+  end
+
+  local contexts = target_contexts(targets)
+  local all_commented = true
+  local raw_lines = {}
+
+  for index, context in ipairs(contexts) do
+    raw_lines[index] = context.raw
+    if not context_blank(context) and not context.is_comment then
+      all_commented = false
+    end
+  end
+
+  local updated = {}
+  if all_commented then
+    for index, context in ipairs(contexts) do
+      if context.is_comment then
+        updated[index] = context.indent .. context.body
+      else
+        updated[index] = context.raw
+      end
+    end
+  else
+    local base_indent = minimum_indent(raw_lines)
+    for index, context in ipairs(contexts) do
+      if context_blank(context) or context.is_comment then
+        updated[index] = context.raw
+      else
+        updated[index] = base_indent .. marker .. context.raw:sub(#base_indent + 1)
+      end
+    end
+  end
+
+  for index, lnum in ipairs(targets) do
+    vim.fn.setline(lnum, updated[index])
+  end
+end
+
+function M.toggle_comment_range(first, last)
+  M.toggle_comment_targets(range_targets(first, last))
 end
 
 function M.shift_targets(targets, direction)
@@ -806,6 +856,10 @@ vim.api.nvim_create_user_command('CleanLines', function(opts)
   M.clean_targets(command_targets(opts))
 end, { range = true, desc = 'Remove list markers from selected lines/same-indent block lines' })
 
+vim.api.nvim_create_user_command('ToggleCommentLines', function(opts)
+  M.toggle_comment_targets(command_span_targets(opts))
+end, { range = true, desc = 'Toggle comments on selected lines/same-indent block spans' })
+
 vim.api.nvim_create_user_command('IndentLines', function(opts)
   M.shift_targets(command_span_targets(opts), 1)
 end, { range = true, desc = 'Indent selected lines/same-indent block spans' })
@@ -835,7 +889,7 @@ vim.keymap.set({ 'n', 'x' }, '<leader>ln', ':NumberLines<CR>', {
   desc = 'List: number lines',
   silent = true,
 })
-vim.keymap.set({ 'n', 'x' }, '<leader>lr', ':RomanLines<CR>', {
+vim.keymap.set({ 'n', 'x' }, '<leader>lR', ':RomanLines<CR>', {
   desc = 'List: roman lines',
   silent = true,
 })
@@ -847,8 +901,12 @@ vim.keymap.set({ 'n', 'x' }, '<leader>lL', ':CapitalLetterLines<CR>', {
   desc = 'List: capital letter lines',
   silent = true,
 })
-vim.keymap.set({ 'n', 'x' }, '<leader>lc', ':CleanLines<CR>', {
+vim.keymap.set({ 'n', 'x' }, '<leader>lr', ':CleanLines<CR>', {
   desc = 'List: clean markers',
+  silent = true,
+})
+vim.keymap.set({ 'n', 'x' }, '<leader>lc', ':ToggleCommentLines<CR>', {
+  desc = 'List: toggle comments',
   silent = true,
 })
 vim.keymap.set({ 'n', 'x' }, '<leader>l>', ':IndentLines<CR>', {

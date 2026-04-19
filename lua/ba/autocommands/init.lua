@@ -1,5 +1,4 @@
 require 'ba.autocommands.close-on-leave'
-require 'ba.autocommands.list-tools'
 require 'ba.autocommands.local-keymaps'
 require 'ba.autocommands.moveindent'
 require 'ba.autocommands.replace-text'

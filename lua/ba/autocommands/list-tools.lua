@@ -412,6 +412,60 @@ local function minimum_indent(lines)
   return min_indent or ''
 end
 
+local function is_markdown_buffer()
+  local ft = vim.bo.filetype or ''
+  return ft == 'markdown' or ft == 'mdx' or ft:match 'markdown' ~= nil
+end
+
+local function toggle_markdown_inline(line)
+  local indent, text = line:match '^(%s*)(.*)$'
+  indent = indent or ''
+  text = text or ''
+  if text:match '^`.*`$' and #text >= 2 then
+    return indent .. text:sub(2, -2)
+  end
+
+  return indent .. '`' .. text .. '`'
+end
+
+local function markdown_fence_context(lines)
+  if #lines < 2 then
+    return false
+  end
+
+  local first = vim.trim(lines[1] or '')
+  local last = vim.trim(lines[#lines] or '')
+  return first:match '^```.*$' ~= nil and last == '```'
+end
+
+local function toggle_markdown_targets(targets)
+  if #targets == 0 then
+    return
+  end
+
+  if #targets == 1 then
+    local lnum = targets[1]
+    vim.fn.setline(lnum, toggle_markdown_inline(vim.fn.getline(lnum)))
+    return
+  end
+
+  local first = targets[1]
+  local last = targets[#targets]
+  local lines = vim.api.nvim_buf_get_lines(0, first - 1, last, false)
+
+  if markdown_fence_context(lines) then
+    vim.api.nvim_buf_set_lines(0, first - 1, last, false, vim.list_slice(lines, 2, #lines - 1))
+    return
+  end
+
+  local base_indent = minimum_indent(lines)
+  local updated = { base_indent .. '```' }
+  vim.list_extend(updated, lines)
+  updated[#updated + 1] = base_indent .. '```'
+
+  vim.api.nvim_buf_set_lines(0, first - 1, last, false, updated)
+end
+
 local function sort_entries(entries)
   table.sort(entries, function(left, right)
     if left.key == right.key then
@@ -651,6 +705,11 @@ function M.clean_range(first, last)
 end
 
 function M.toggle_comment_targets(targets)
+  if is_markdown_buffer() then
+    toggle_markdown_targets(targets)
+    return
+  end
+
   local marker = line_comment_marker()
   if not marker then
     vim.notify('List tools: no line comment marker for this buffer', vim.log.levels.WARN)

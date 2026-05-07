@@ -5,6 +5,104 @@ local grep_exclude = {
   -- 'path/to/dir/**', -- Example directory exclude
 }
 
+local grep_preset_exclude = {
+  '**test*',
+  '**Test*',
+}
+
+local function grep_parse_exclude_globs(value)
+  if not value or value:find '^%s*$' then
+    return {}
+  end
+
+  local _, tokens = Snacks.picker.util.parse('x -- ' .. value)
+  local globs = {}
+  local expect_glob = false
+
+  for _, token in ipairs(tokens) do
+    local glob
+    if expect_glob then
+      glob = token
+      expect_glob = false
+    elseif token == '-g' or token == '--glob' then
+      expect_glob = true
+    else
+      glob = token:match '^%-g=(.+)$' or token:match '^%-%-glob=(.+)$'
+      if not glob and token:sub(1, 1) ~= '-' then
+        glob = token
+      end
+    end
+
+    if glob then
+      glob = vim.trim(glob):gsub('^!', '')
+      if glob ~= '' then
+        globs[#globs + 1] = glob
+      end
+    end
+  end
+
+  return globs
+end
+
+local function grep_format_exclude_globs(globs)
+  return table.concat(
+    vim.tbl_map(function(glob)
+      return '!' .. glob
+    end, globs or {}),
+    ' '
+  )
+end
+
+local function grep_sync_exclude(picker)
+  picker.opts._base_exclude = picker.opts._base_exclude or vim.deepcopy(picker.opts.exclude or {})
+
+  local exclude = vim.deepcopy(picker.opts._base_exclude)
+  if picker.opts.exclude_preset then
+    vim.list_extend(exclude, grep_preset_exclude)
+  end
+  vim.list_extend(exclude, picker.opts.exclude_globs or {})
+  picker.opts.exclude = exclude
+end
+
+local function grep_source_opts(opts)
+  return vim.tbl_deep_extend('force', {
+    exclude = grep_exclude,
+    actions = {
+      edit_exclude_globs = function(picker)
+        Snacks.input({
+          prompt = 'Negative globs (-g)',
+          default = grep_format_exclude_globs(picker.opts.exclude_globs),
+        }, function(value)
+          if value == nil then
+            return
+          end
+          picker.opts.exclude_globs = grep_parse_exclude_globs(value)
+          grep_sync_exclude(picker)
+          picker.list:set_target()
+          picker:find()
+        end)
+      end,
+    },
+    filter = {
+      transform = function(picker)
+        grep_sync_exclude(picker)
+      end,
+    },
+    win = {
+      input = {
+        keys = {
+          ['<c-e>'] = { 'edit_exclude_globs', mode = { 'i', 'n' }, desc = 'Edit negative globs' },
+        },
+      },
+      list = {
+        keys = {
+          ['<c-e>'] = { 'edit_exclude_globs', mode = { 'n', 'x' }, desc = 'Edit negative globs' },
+        },
+      },
+    },
+  }, opts or {})
+end
+
 local function fire_persistence_event(event)
   pcall(vim.api.nvim_exec_autocmds, 'User', {
     pattern = 'Persistence' .. event,
@@ -122,12 +220,8 @@ return {
     opts = {
       picker = {
         sources = {
-          grep = {
-            exclude = grep_exclude,
-          },
-          grep_word = {
-            exclude = grep_exclude,
-          },
+          grep = grep_source_opts(),
+          grep_word = grep_source_opts(),
           projects = {
             confirm = load_project_session_clean,
             dev = { '~/projects', '~/dev', '~/code' },
@@ -232,6 +326,7 @@ return {
       { "<leader>sb", function() Snacks.picker.lines() end, desc = "Buffer Lines" },
       { "<leader>sB", function() Snacks.picker.grep_buffers() end, desc = "Grep Open Buffers" },
       { "<leader>sw", function() Snacks.picker.grep_word() end, desc = "Visual selection or word", mode = { "n", "x" } },
+      { "<leader>se", function() Snacks.picker.grep_word({ exclude_preset = true }) end, desc = "Visual selection or word (preset excludes)", mode = { "n", "x" } },
       -- operator-pending grep by motion, e.g. <leader>siw, <leader>sab, <leader>sip
       { "<leader>s", function() vim.go.operatorfunc = "v:lua.vim.SnacksGrepOperator" return "g@" end, expr = true, desc = "Grep by motion" },
 
